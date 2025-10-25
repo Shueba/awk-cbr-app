@@ -1,0 +1,7 @@
+streamlit==1.39.0
+pandas
+numpy
+plotly
+pillow
+pytesseract
+# easyocr           # <— leave commented for now (heavy). Add later if you want.
