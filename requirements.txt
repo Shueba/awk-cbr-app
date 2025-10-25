@@ -4,4 +4,3 @@ numpy
 plotly
 pillow
 pytesseract
-# easyocr           # <— leave commented for now (heavy). Add later if you want.
