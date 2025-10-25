@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image, ImageFile
 import pytesseract
+import os
 
 # ---------------- Tesseract path ----------------
 TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -36,22 +37,53 @@ h2 { text-align:center; letter-spacing:.3px; }
 """, unsafe_allow_html=True)
 
 # ---------------- Logo ----------------
-try:
-    logo_path = r"C:\Users\AWK 4\AppData\Local\Programs\Python\Python312\Round LOGO AWK (1).jpg"
-    with Image.open(logo_path) as img:
-        max_width = 350
-        ratio = max_width / img.width
-        new_height = int(img.height * ratio)
-        logo = img.resize((max_width, new_height))
-        buffer = io.BytesIO()
-        logo.save(buffer, format="PNG")
-        img_b64 = base64.b64encode(buffer.getvalue()).decode()
+
+# ---------------- Logo ----------------
+def render_logo(max_width=350):
+    import os, io, base64
+    from PIL import Image
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        "Round AWK Logo.jpg",
+        "awk_logo.jpg",
+        "Round LOGO AWK (1).jpg",  # legacy name if you committed this
+    ]
+
+    logo_path = None
+    for name in candidates:
+        p = os.path.join(base_dir, name)
+        if os.path.isfile(p):
+            logo_path = p
+            break
+
+    if not logo_path:
+        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
+        return
+
+    try:
+        with Image.open(logo_path) as img:
+            ratio = max_width / float(img.width)
+            new_height = int(img.height * ratio)
+            img = img.resize((max_width, new_height))
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
         st.markdown(
-            f"<div style='text-align:center;'><img src='data:image/png;base64,{img_b64}' width='{max_width}'></div>",
+            f"""
+            <div style="text-align:center;">
+                <img src="data:image/png;base64,{img_b64}" width="{max_width}" />
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-except Exception as e:
-    st.warning(f"⚠️ Could not load logo: {e}")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load logo: {e}")
+
+# Call it once
+render_logo()
 
 # ---------------- Constants ----------------
 CF_DEFAULTS = {300: 0.442, 455: 0.629, 610: 0.816}
