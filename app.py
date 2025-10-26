@@ -388,29 +388,63 @@ with colD:
 method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
 rows = []
 
+# ---------------- Manual entry (single editable table) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
-    for L in LOAD_STEPS:
-        with st.expander(f"Load {L} kN", expanded=(L in [0, 10])):
-            c1, c2, c3, c4 = st.columns([1.1, 1, 1, 1])
 
-            # Library pressure (locked)
-            p_val = float(PRESSURE_LIBRARY[plate][L])
-            c1.number_input(
-                f"Bearing pressure @ {L} kN ({PRESSURE_UNITS})",
-                value=p_val,
-                disabled=True,
-                key=f"p_{L}",
-                step=0.01,
-                format="%.2f",
-            )
+    # Initial empty table (persists across reruns)
+    init_df = pd.DataFrame({
+        "Load (kN)": LOAD_STEPS,
+        "Dial 1 (mm)": [np.nan] * len(LOAD_STEPS),
+        "Dial 2 (mm)": [np.nan] * len(LOAD_STEPS),
+        "Dial 3 (mm)": [np.nan] * len(LOAD_STEPS),
+    })
 
-            # Dials as text inputs; iOS decimal keypad enforced via JS
-            d1 = dial_text("Dial 1 (mm)", key=f"d1_{L}")
-            d2 = dial_text("Dial 2 (mm)", key=f"d2_{L}")
-            d3 = dial_text("Dial 3 (mm)", key=f"d3_{L}")
+    # Reset the table if it doesn't exist yet (or if you ever want to change when to reset)
+    if "dial_df" not in st.session_state:
+        st.session_state["dial_df"] = init_df.copy()
 
+    # Editable table
+    dial_df = st.data_editor(
+        st.session_state["dial_df"],
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "Load (kN)": st.column_config.NumberColumn(
+                format="%.0f", step=10, disabled=True
+            ),
+            "Dial 1 (mm)": st.column_config.NumberColumn(
+                min_value=0.0, step=0.01, format="%.2f", help="Enter Dial 1 reading"
+            ),
+            "Dial 2 (mm)": st.column_config.NumberColumn(
+                min_value=0.0, step=0.01, format="%.2f", help="Enter Dial 2 reading"
+            ),
+            "Dial 3 (mm)": st.column_config.NumberColumn(
+                min_value=0.0, step=0.01, format="%.2f", help="Enter Dial 3 reading"
+            ),
+        },
+        key="dial_table",
+    )
+
+    # Save edits
+    st.session_state["dial_df"] = dial_df.copy()
+
+    # Validate all cells are filled
+    if dial_df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
+        st.info("Please fill **all** dial readings (three per load) to continue.")
+        st.stop()
+
+    # Build `rows` for downstream calculations
+    rows = []
+    for _, r in dial_df.iterrows():
+        L = int(r["Load (kN)"])
+        d1 = float(r["Dial 1 (mm)"])
+        d2 = float(r["Dial 2 (mm)"])
+        d3 = float(r["Dial 3 (mm)"])
+        p_val = float(PRESSURE_LIBRARY[plate][L])
         rows.append([L, p_val, d1, d2, d3])
+
 
     # Require all three dials at all loads
     if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
