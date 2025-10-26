@@ -389,38 +389,38 @@ method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OC
 rows = []
 
 
-# ---------------- Manual entry (single editable table + live Settlement) ----------------
-# ---------------- Manual entry (single table; no settlement column) ----------------
+# ---------------- Manual entry (stable; single table; no settlement col) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # 1) Init once: keep dials as strings so typing never gets wiped
+    # 1) Initialise once and only once
     if "dial_df" not in st.session_state:
         st.session_state["dial_df"] = pd.DataFrame({
-            "Load (kN)": LOAD_STEPS,                 # fixed
-            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # strings accept '.' or ','
+            "Load (kN)": LOAD_STEPS,                 # fixed loads
+            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # keep as strings so typing never gets wiped
             "Dial 2 (mm)": ["" for _ in LOAD_STEPS],
             "Dial 3 (mm)": ["" for _ in LOAD_STEPS],
         })
 
-    # 2) Show one editable table (no validation so partial input is OK)
+    # 2) Show editor with a STABLE key; Load column read-only
     edited = st.data_editor(
         st.session_state["dial_df"],
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
+        column_order=["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"],
         column_config={
             "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
-            # leave dial columns as default TextColumn (no validate), so input never disappears
+            # Leave Dial columns as free text so partial inputs like "22," aren't rejected mid-typing
         },
-        key="dial_table",
+        key="dial_editor",  # <— important: stable key so the widget keeps its state
     )
 
-    # 3) Persist what the user typed (strings) — prevents losing entries on rerun
+    # 3) Persist user edits to session_state BEFORE any st.stop() or further widgets
     st.session_state["dial_df"] = edited.copy()
 
-    # 4) Parse strings to floats AFTER editing (accepts '23.56' or '23,56')
-    def _to_float(s: str):
+    # 4) Convert strings to floats AFTER editing (accept '.' or ',')
+    def _to_float(s):
         s = str(s).strip()
         if s in ("", "-", "None", "nan"):
             return np.nan
@@ -436,12 +436,12 @@ if method == "Manual entry":
         "Dial 3 (mm)": edited["Dial 3 (mm)"].map(_to_float),
     })
 
-    # 5) Require all three dials per load before continuing
+    # 5) Require all dials provided before continuing
     if parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
-        st.info("Please enter **all** three dial readings for each load. Both `23.56` and `23,56` are OK.")
+        st.info("Please fill all three dial readings for each load. Both `23.56` and `23,56` are OK.")
         st.stop()
 
-    # 6) Build rows for the rest of your pipeline (uses your PRESSURE_LIBRARY)
+    # 6) Build rows for the rest of your pipeline
     rows = []
     for _, r in parsed.iterrows():
         L = int(r["Load (kN)"])
