@@ -61,8 +61,6 @@ def check_password():
         return True
 
     return False
-e
-
 
 # ---- Stop here until password is correct ----
 if not check_password():
