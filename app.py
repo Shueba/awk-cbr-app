@@ -390,60 +390,96 @@ rows = []
 
 
 # ---------------- Manual entry (single editable table + live Settlement) ----------------
-# ---------------- Manual entry (single editable table WITH Settlement) ----------------
+# ---------------- Manual entry (single table; live Settlement; no "None") ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # Initialise once
+    # 1) Initialise once: keep dials as strings so we can accept "," or "."
     if "dial_df" not in st.session_state:
         st.session_state["dial_df"] = pd.DataFrame({
-            "Load (kN)": LOAD_STEPS,
-            "Dial 1 (mm)": [np.nan] * len(LOAD_STEPS),
-            "Dial 2 (mm)": [np.nan] * len(LOAD_STEPS),
-            "Dial 3 (mm)": [np.nan] * len(LOAD_STEPS),
+            "Load (kN)": LOAD_STEPS,                 # numeric, fixed
+            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # strings for free-form entry
+            "Dial 2 (mm)": ["" for _ in LOAD_STEPS],
+            "Dial 3 (mm)": ["" for _ in LOAD_STEPS],
         })
 
-    # Compute Settlement from the CURRENT state (so the column shows up-to-date values)
-    tmp = st.session_state["dial_df"].copy()
-    if tmp[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=None):
-        tmp["Avg Dial (mm)"] = tmp[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
-        avg0 = tmp.loc[tmp["Load (kN)"] == 0, "Avg Dial (mm)"].iloc[0]
-        tmp["Settlement (mm)"] = (avg0 - tmp["Avg Dial (mm)"]).round(2)
-    else:
-        tmp["Settlement (mm)"] = np.nan  # until all three dials per row are filled
+    # 2) Helper to parse a single cell to float (accepts 23,56 or 23.56)
+    def _to_float(s):
+        s = str(s).strip()
+        if s in ("", "-", "None", "nan"): 
+            return np.nan
+        try:
+            return float(s.replace(",", "."))
+        except Exception:
+            return np.nan
 
-    # Show a single editor with Settlement read-only
+    # 3) Build a parsed (numeric) copy to compute Settlement row-by-row
+    raw = st.session_state["dial_df"].copy()
+    parsed = pd.DataFrame({
+        "Load (kN)": raw["Load (kN)"],
+        "Dial 1 (mm)": raw["Dial 1 (mm)"].map(_to_float),
+        "Dial 2 (mm)": raw["Dial 2 (mm)"].map(_to_float),
+        "Dial 3 (mm)": raw["Dial 3 (mm)"].map(_to_float),
+    })
+
+    # Settlement column as float (NaN where unknown)
+    settlement = pd.Series(np.nan, index=parsed.index, dtype=float)
+
+    # Compute avg0 if load 0 has all three dials
+    row0 = parsed[parsed["Load (kN)"] == 0]
+    if not row0.empty and row0[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=None):
+        avg0 = row0[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1).iloc[0]
+        # Compute per-row settlement where all three dials present
+        row_avgs = parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
+        have_all = parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=1)
+        settlement.loc[have_all] = (avg0 - row_avgs.loc[have_all]).round(2)
+
+    # 4) Table shown to user: Load & Settlement read-only; Dials editable text
+    display_df = raw.copy()
+    display_df["Settlement (mm)"] = settlement  # this is float; NaN renders as blank
+
     edited = st.data_editor(
-        tmp[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)", "Settlement (mm)"]],
+        display_df,
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
         column_config={
             "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
-            "Dial 1 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 1"),
-            "Dial 2 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 2"),
-            "Dial 3 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 3"),
+            "Dial 1 (mm)": st.column_config.TextColumn(
+                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
+            ),
+            "Dial 2 (mm)": st.column_config.TextColumn(
+                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
+            ),
+            "Dial 3 (mm)": st.column_config.TextColumn(
+                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
+            ),
             "Settlement (mm)": st.column_config.NumberColumn(format="%.2f", disabled=True),
         },
         key="dial_table",
     )
 
-    # Persist only the editable parts back to state
+    # 5) Persist edited strings (only the editable cols) back to state
     st.session_state["dial_df"] = edited[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].copy()
 
-    # Validate
-    dial_df = st.session_state["dial_df"]
-    if dial_df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
-        st.info("Please enter **all** dial readings (three per load) to continue.")
+    # 6) Build numeric rows for downstream once everything is filled
+    parsed = pd.DataFrame({
+        "Load (kN)": st.session_state["dial_df"]["Load (kN)"],
+        "Dial 1 (mm)": st.session_state["dial_df"]["Dial 1 (mm)"].map(_to_float),
+        "Dial 2 (mm)": st.session_state["dial_df"]["Dial 2 (mm)"].map(_to_float),
+        "Dial 3 (mm)": st.session_state["dial_df"]["Dial 3 (mm)"].map(_to_float),
+    })
+    if parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
+        st.info("Please enter **all** three dials for each load. Both `23.56` and `23,56` are ok.")
         st.stop()
 
-    # Build rows for downstream calculations
+    # Proceed (rows for your existing pipeline)
     rows = []
-    for _, r in dial_df.iterrows():
+    for _, r in parsed.iterrows():
         L = int(r["Load (kN)"])
-        d1, d2, d3 = float(r["Dial 1 (mm)"]), float(r["Dial 2 (mm)"]), float(r["Dial 3 (mm)"])
         p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, d1, d2, d3])
+        rows.append([L, p_val, float(r["Dial 1 (mm)"]), float(r["Dial 2 (mm)"]), float(r["Dial 3 (mm)"])])
+
 
 
 
