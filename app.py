@@ -23,7 +23,7 @@ set_tesseract_path()
 # ---- Password protection ----
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
-    if not pw:  # if you haven't set the secret yet, don't block the app
+    if not pw:
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
 
@@ -37,14 +37,74 @@ def check_password():
     if ok:
         if entered == pw:
             st.session_state["auth_ok"] = True
-            st.experimental_rerun()
+            st.rerun()  # <— use this (not st.experimental_rerun)
         else:
             st.sidebar.error("Incorrect password")
+
     return False
 
 # ---- Stop here until the password is correct ----
 if not check_password():
     st.stop()
+
+# ---------------- Header: logo + welcome ----------------
+def render_header():
+    import io, base64
+    from PIL import Image
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_candidates = ["Round AWK Logo.jpg", "awk_logo.jpg"]
+    logo_path = next((os.path.join(base_dir, n) for n in logo_candidates
+                      if os.path.isfile(os.path.join(base_dir, n))), None)
+
+    # Logo (centered)
+    if logo_path:
+        try:
+            with Image.open(logo_path) as img:
+                # resize to a nice width
+                max_w = 260
+                ratio = max_w / float(img.width)
+                new_h = int(img.height * ratio)
+                img = img.resize((max_w, new_h))
+
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            st.markdown(
+                f"""
+                <div style="text-align:center; margin-top:6px;">
+                    <img src="data:image/png;base64,{b64}" width="{max_w}">
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        except Exception as e:
+            st.warning(f"Could not load logo: {e}")
+    else:
+        st.info("Logo image not found in repo (looked for 'Round AWK Logo.jpg').")
+
+    # Welcome banner
+    st.markdown(
+        """
+        <div style="
+            margin:12px auto 14px auto; max-width:900px;
+            padding:14px 16px; border:1px solid #1976d2;
+            background:#e3f2fd; color:#0d47a1; border-radius:12px;">
+          <div style="font-size:16px; font-weight:700; letter-spacing:.2px;">
+            WELCOME TO AWK GROUND TESTING APP
+          </div>
+          <div style="font-size:13px; margin-top:6px;">
+            Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
+            plots, and tables.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# call it
+render_header()
+
 
 # (your existing code continues BELOW this line: CSS, logo, etc.)
 
