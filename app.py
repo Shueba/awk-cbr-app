@@ -20,26 +20,6 @@ def set_tesseract_path():
             pytesseract.pytesseract.tesseract_cmd = cmd
 set_tesseract_path()
 
-# ---- Password protection ----
-def _welcome_banner():
-    st.markdown(
-        """
-        <div style="
-            margin:10px auto 14px auto; max-width:900px;
-            padding:14px 16px; border:1px solid #1976d2;
-            background:#e3f2fd; color:#0d47a1; border-radius:12px;">
-          <div style="font-size:16px; font-weight:700; letter-spacing:.2px;">
-            WELCOME TO AWK GROUND TESTING APP
-          </div>
-          <div style="font-size:13px; margin-top:6px;">
-            Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
-            plots, and tables.
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
     # Always show the banner on the login page
@@ -91,8 +71,6 @@ h2 { text-align:center; letter-spacing:.3px; }
 .awk-banner { margin: 10px 0 14px 0; }
 </style>
 """, unsafe_allow_html=True)
-
-# ---------------- Logo ----------------
 
 # ---------------- Logo ----------------
 def render_logo(max_width=350):
