@@ -1,15 +1,54 @@
-import io, os, re, json, base64
+import io, os, re, base64
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image, ImageFile
 import pytesseract
-import os
+import shutil, platform, streamlit.components.v1 as components
 
-# ---------------- Tesseract path ----------------
-TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
+# ---------------- Tesseract path (cross-platform safe) ----------------
+def set_tesseract_path():
+    """Automatically find Tesseract on Windows or Linux (Streamlit Cloud)."""
+    if platform.system().lower().startswith("win"):
+        # Windows default installation path
+        possible = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        pytesseract.pytesseract.tesseract_cmd = possible
+    else:
+        # Linux/macOS – find tesseract automatically
+        cmd = shutil.which("tesseract")
+        if cmd:
+            pytesseract.pytesseract.tesseract_cmd = cmd
+
+set_tesseract_path()
+
+# ---------------- Password Protection ----------------
+def check_password():
+    pw = st.secrets.get("APP_PASSWORD")
+    if not pw:
+        st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
+        return True
+
+    if st.session_state.get("auth_ok"):
+        return True
+
+    with st.sidebar.form("login", clear_on_submit=False):
+        entered = st.text_input("Password", type="password")
+        ok = st.form_submit_button("Sign in")
+
+    if ok:
+        if entered == pw:
+            st.session_state["auth_ok"] = True
+            st.experimental_rerun()
+        else:
+            st.sidebar.error("Incorrect password")
+
+    return False
+
+# 🚫 Stop the app if password not entered correctly
+if not check_password():
+    st.stop()
+
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="AWK – Equivalent In-Situ CBR", layout="centered")
