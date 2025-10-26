@@ -24,6 +24,27 @@ set_tesseract_path()
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
 
+    # --- Welcome + Logo section (always visible) ---
+    col1, col2 = st.columns([1, 2])
+    with col2:
+        st.markdown(
+            """
+            <h3 style='text-align:center; color:#003366;'>WELCOME TO AWK GROUND TESTING APP</h3>
+            <p style='text-align:center; color:#333;'>
+            Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR, plots, and tables.
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Try to show the AWK logo
+        try:
+            img = Image.open("Round AWK Logo.jpg")
+            st.image(img, width=300, use_column_width=False)
+        except Exception as e:
+            st.warning(f"⚠️ Could not load logo: {e}")
+
+    # --- Password input ---
     if not pw:
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
@@ -43,6 +64,7 @@ def check_password():
             st.sidebar.error("Incorrect password")
 
     return False
+
 
 # ---- Stop here until password is correct ----
 if not check_password():
