@@ -67,45 +67,35 @@ if not check_password():
     st.stop()
 
 # ---------------- Logo (DEFINE FIRST, then call it) ----------------
+# ---------------- Logo ----------------
 def render_logo(max_width=350):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        "Round AWK Logo.jpg",
-        "awk_logo.jpg",
-        "Round LOGO AWK (1).jpg",
-    ]
-    logo_path = None
-    for name in candidates:
+    for name in ["Round AWK Logo.jpg", "awk_logo.jpg", "Round LOGO AWK (1).jpg"]:
         p = os.path.join(base_dir, name)
         if os.path.isfile(p):
             logo_path = p
             break
-
-    if not logo_path:
-        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
+    else:
+        st.warning("⚠️ Could not load logo file.")
         return
 
     try:
         with Image.open(logo_path) as img:
             ratio = max_width / float(img.width)
-            new_height = int(img.height * ratio)
-            img = img.resize((max_width, new_height))
+            img = img.resize((max_width, int(img.height * ratio)))
             buffer = io.BytesIO()
             img.save(buffer, format="PNG")
             img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         st.markdown(
-            f"""
-            <div style="text-align:center;">
-                <img src="data:image/png;base64,{img_b64}" width="{max_width}" />
-            </div>
-            """,
+            f"<div style='text-align:center;'><img src='data:image/png;base64,{img_b64}' width='{max_width}'/></div>",
             unsafe_allow_html=True,
         )
     except Exception as e:
         st.warning(f"⚠️ Could not load logo: {e}")
 
-# ✅ Now call it ONCE (after it’s defined)
+# ✅ show logo ONLY after login
 render_logo()
+
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
