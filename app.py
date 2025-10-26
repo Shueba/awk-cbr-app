@@ -390,90 +390,58 @@ rows = []
 
 
 # ---------------- Manual entry (single editable table + live Settlement) ----------------
-# ---------------- Manual entry (single table; live Settlement; no "None") ----------------
+# ---------------- Manual entry (single table; no settlement column) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # 1) Initialise once: keep dials as strings so we can accept "," or "."
+    # 1) Init once: keep dials as strings so typing never gets wiped
     if "dial_df" not in st.session_state:
         st.session_state["dial_df"] = pd.DataFrame({
-            "Load (kN)": LOAD_STEPS,                 # numeric, fixed
-            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # strings for free-form entry
+            "Load (kN)": LOAD_STEPS,                 # fixed
+            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # strings accept '.' or ','
             "Dial 2 (mm)": ["" for _ in LOAD_STEPS],
             "Dial 3 (mm)": ["" for _ in LOAD_STEPS],
         })
 
-    # 2) Helper to parse a single cell to float (accepts 23,56 or 23.56)
-    def _to_float(s):
+    # 2) Show one editable table (no validation so partial input is OK)
+    edited = st.data_editor(
+        st.session_state["dial_df"],
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
+            # leave dial columns as default TextColumn (no validate), so input never disappears
+        },
+        key="dial_table",
+    )
+
+    # 3) Persist what the user typed (strings) — prevents losing entries on rerun
+    st.session_state["dial_df"] = edited.copy()
+
+    # 4) Parse strings to floats AFTER editing (accepts '23.56' or '23,56')
+    def _to_float(s: str):
         s = str(s).strip()
-        if s in ("", "-", "None", "nan"): 
+        if s in ("", "-", "None", "nan"):
             return np.nan
         try:
             return float(s.replace(",", "."))
         except Exception:
             return np.nan
 
-    # 3) Build a parsed (numeric) copy to compute Settlement row-by-row
-    raw = st.session_state["dial_df"].copy()
     parsed = pd.DataFrame({
-        "Load (kN)": raw["Load (kN)"],
-        "Dial 1 (mm)": raw["Dial 1 (mm)"].map(_to_float),
-        "Dial 2 (mm)": raw["Dial 2 (mm)"].map(_to_float),
-        "Dial 3 (mm)": raw["Dial 3 (mm)"].map(_to_float),
+        "Load (kN)": edited["Load (kN)"],
+        "Dial 1 (mm)": edited["Dial 1 (mm)"].map(_to_float),
+        "Dial 2 (mm)": edited["Dial 2 (mm)"].map(_to_float),
+        "Dial 3 (mm)": edited["Dial 3 (mm)"].map(_to_float),
     })
 
-    # Settlement column as float (NaN where unknown)
-    settlement = pd.Series(np.nan, index=parsed.index, dtype=float)
-
-    # Compute avg0 if load 0 has all three dials
-    row0 = parsed[parsed["Load (kN)"] == 0]
-    if not row0.empty and row0[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=None):
-        avg0 = row0[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1).iloc[0]
-        # Compute per-row settlement where all three dials present
-        row_avgs = parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
-        have_all = parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=1)
-        settlement.loc[have_all] = (avg0 - row_avgs.loc[have_all]).round(2)
-
-    # 4) Table shown to user: Load & Settlement read-only; Dials editable text
-    display_df = raw.copy()
-    display_df["Settlement (mm)"] = settlement  # this is float; NaN renders as blank
-
-    edited = st.data_editor(
-        display_df,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
-            "Dial 1 (mm)": st.column_config.TextColumn(
-                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
-            ),
-            "Dial 2 (mm)": st.column_config.TextColumn(
-                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
-            ),
-            "Dial 3 (mm)": st.column_config.TextColumn(
-                help="e.g. 23.56 or 23,56", validate="^[-]?[0-9]*([.,][0-9]+)?$"
-            ),
-            "Settlement (mm)": st.column_config.NumberColumn(format="%.2f", disabled=True),
-        },
-        key="dial_table",
-    )
-
-    # 5) Persist edited strings (only the editable cols) back to state
-    st.session_state["dial_df"] = edited[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].copy()
-
-    # 6) Build numeric rows for downstream once everything is filled
-    parsed = pd.DataFrame({
-        "Load (kN)": st.session_state["dial_df"]["Load (kN)"],
-        "Dial 1 (mm)": st.session_state["dial_df"]["Dial 1 (mm)"].map(_to_float),
-        "Dial 2 (mm)": st.session_state["dial_df"]["Dial 2 (mm)"].map(_to_float),
-        "Dial 3 (mm)": st.session_state["dial_df"]["Dial 3 (mm)"].map(_to_float),
-    })
+    # 5) Require all three dials per load before continuing
     if parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
-        st.info("Please enter **all** three dials for each load. Both `23.56` and `23,56` are ok.")
+        st.info("Please enter **all** three dial readings for each load. Both `23.56` and `23,56` are OK.")
         st.stop()
 
-    # Proceed (rows for your existing pipeline)
+    # 6) Build rows for the rest of your pipeline (uses your PRESSURE_LIBRARY)
     rows = []
     for _, r in parsed.iterrows():
         L = int(r["Load (kN)"])
