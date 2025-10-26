@@ -7,10 +7,10 @@ from PIL import Image, ImageFile
 import pytesseract
 import streamlit.components.v1 as components
 
-# 1) MUST be the first Streamlit command
+# ---- MUST be the first Streamlit command ----
 st.set_page_config(page_title="AWK – Equivalent In-Situ CBR", layout="centered")
 
-# 2) Tesseract (safe for Windows + Streamlit Cloud)
+# ---- Tesseract path (works on Windows + Streamlit Cloud) ----
 def set_tesseract_path():
     if platform.system().lower().startswith("win"):
         pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -20,17 +20,20 @@ def set_tesseract_path():
             pytesseract.pytesseract.tesseract_cmd = cmd
 set_tesseract_path()
 
-# 3) Password gate (define, then call)
+# ---- Password protection ----
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
-    if not pw:
+    if not pw:  # if you haven't set the secret yet, don't block the app
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
+
     if st.session_state.get("auth_ok"):
         return True
+
     with st.sidebar.form("login", clear_on_submit=False):
         entered = st.text_input("Password", type="password")
         ok = st.form_submit_button("Sign in")
+
     if ok:
         if entered == pw:
             st.session_state["auth_ok"] = True
@@ -39,18 +42,11 @@ def check_password():
             st.sidebar.error("Incorrect password")
     return False
 
-# 4) Stop app until password is correct
+# ---- Stop here until the password is correct ----
 if not check_password():
     st.stop()
 
-# --- now continue with the rest of your code (CSS, logo, widgets, etc.) ---
-
-
-
-# ---------------- Streamlit Setup ----------------
-st.set_page_config(page_title="AWK – Equivalent In-Situ CBR", layout="centered")
-Image.MAX_IMAGE_PIXELS = None
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+# (your existing code continues BELOW this line: CSS, logo, etc.)
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
