@@ -77,6 +77,19 @@ render_logo()
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
+...
+""", unsafe_allow_html=True)
+# ---------------- Logo ----------------
+def render_logo(max_width=350):
+    ...
+    # (function body)
+    ...
+
+render_logo()   # <-- keep this one
+
+
+# ---------- Responsive layout / mobile polish ----------
+st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] > .main { padding-top: .6rem; }
 .block-container {
