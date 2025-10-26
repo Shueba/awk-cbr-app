@@ -24,16 +24,16 @@ set_tesseract_path()
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
 
-    # If already authenticated, skip login UI
+    # Already authenticated
     if st.session_state.get("auth_ok"):
         return True
 
-    # --- Login page (message only, no logo) ---
+    # --- Main login screen content ---
     st.markdown(
         """
-        <div style='text-align:center; padding:28px 8px 10px;'>
+        <div style='text-align:center; padding:28px 8px 6px;'>
             <h3 style='color:#003366; margin:0;'>WELCOME TO AWK GROUND TESTING APP</h3>
-            <p style='font-size:15px; color:#333; max-width:540px; margin:8px auto 0;'>
+            <p style='font-size:15px; color:#333; max-width:540px; margin:8px auto 20px;'>
                 Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
                 plots, and tables.
             </p>
@@ -42,24 +42,26 @@ def check_password():
         unsafe_allow_html=True
     )
 
-    # Unlocked if no password configured
-    if not pw:
-        st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
-        return True
+    # Password input placed *below* welcome text
+    with st.form("login_main", clear_on_submit=False):
+        entered = st.text_input("Password", type="password", placeholder="Enter password here")
+        ok = st.form_submit_button("Sign in", use_container_width=True)
 
-    # Sidebar login
-    with st.sidebar.form("login", clear_on_submit=False):
-        entered = st.text_input("Password", type="password")
-        ok = st.form_submit_button("Sign in")
-
+    # Handle submission
     if ok:
-        if entered == pw:
+        if pw and entered == pw:
             st.session_state["auth_ok"] = True
             st.rerun()
         else:
-            st.sidebar.error("Incorrect password")
+            st.error("❌ Incorrect password. Please try again.")
+
+    # Info if no password configured
+    if not pw:
+        st.info("APP_PASSWORD not set; app is currently unlocked.")
+        return True
 
     return False
+e
 
 
 # ---- Stop here until password is correct ----
