@@ -48,6 +48,12 @@ def check_password():
 if not check_password():
     st.stop()
 
+# 🚫 Stop the app if password not entered correctly
+if not check_password():
+    st.stop()
+
+
+
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
 <style>
@@ -68,12 +74,57 @@ h2 { text-align:center; letter-spacing:.3px; }
 </style>
 """, unsafe_allow_html=True)
 
+# ---------- iPhone decimal keypad: hard-force ----------
+def force_decimal_keypad():
+    """Force iOS Safari to show the decimal keypad on Dial/(mm) inputs."""
+    components.html(
+        """
+        <script>
+        (function () {
+          function match(el){
+            const a = (el.getAttribute('aria-label') || '').toLowerCase();
+            return a.includes('dial') || a.includes('(mm)');
+          }
+          function patchInputs() {
+            const inputs = document.querySelectorAll('input');
+            inputs.forEach(el => {
+              if (!match(el)) return;
+              try { el.type = 'text'; } catch(e) {}
+              el.setAttribute('inputmode','decimal');
+              el.setAttribute('pattern','[0-9]+([.,][0-9]+)?');
+              el.setAttribute('enterkeyhint','done');
+              el.setAttribute('autocapitalize','off');
+              el.setAttribute('autocorrect','off');
+              el.setAttribute('autocomplete','off');
+              el.oninput = function(){
+                const v = el.value;
+                const cleaned = v.replace(/[^0-9.,-]/g,'')
+                                 .replace(/(?!^)-/g,'')        // single leading minus
+                                 .replace(/([.,])(?=.*[.,])/,'$1'); // keep first sep
+                if (v !== cleaned) el.value = cleaned;
+              };
+            });
+          }
+          patchInputs();
+          const mo = new MutationObserver(patchInputs);
+          mo.observe(document.documentElement, { childList: true, subtree: true });
+          window.addEventListener('load', patchInputs, { once:true });
+          document.addEventListener('DOMContentLoaded', patchInputs, { once:true });
+          setInterval(patchInputs, 800);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
 # ---------------- Logo ----------------
 def render_logo(max_width=350):
-    import io, base64
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = ["Round AWK Logo.jpg", "awk_logo.jpg", "Round LOGO AWK (1).jpg"]
-
+    candidates = [
+        "Round AWK Logo.jpg",
+        "awk_logo.jpg",
+        "Round LOGO AWK (1).jpg",
+    ]
     logo_path = None
     for name in candidates:
         p = os.path.join(base_dir, name)
@@ -82,7 +133,7 @@ def render_logo(max_width=350):
             break
 
     if not logo_path:
-        st.warning("⚠️ Could not load logo: file not found.")
+        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
         return
 
     try:
@@ -93,7 +144,6 @@ def render_logo(max_width=350):
             buffer = io.BytesIO()
             img.save(buffer, format="PNG")
             img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
         st.markdown(
             f"""
             <div style="text-align:center;">
@@ -105,7 +155,6 @@ def render_logo(max_width=350):
     except Exception as e:
         st.warning(f"⚠️ Could not load logo: {e}")
 
-# Show logo once
 render_logo()
 
 # ---------------- Constants ----------------
@@ -114,17 +163,11 @@ LOAD_STEPS = [0, 10, 20, 30, 40, 50]
 PRESSURE_UNITS = "kN/m²"
 PRESSURE_LIBRARY = {
     300: {0: 0.00, 10: 145.97, 20: 288.01, 30: 435.70, 40: 577.17, 50: 718.64},
-    455: {0: 0.00, 10: 64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
-    610: {0: 0.00, 10: 36.43, 20: 71.08, 30: 106.51, 40: 140.73, 50: 174.95},
+    455: {0: 0.00, 10:  64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
+    610: {0: 0.00, 10:  36.43, 20:  71.08, 30: 106.51, 40: 140.73, 50: 174.95},
 }
 
 # ---------------- Helpers ----------------
-def clean_num(x):
-    try:
-        return float(str(x).replace(",", "."))
-    except:
-        return None
-
 def parse_dials_from_text(text: str):
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     rows = []
@@ -145,20 +188,24 @@ def pretty_cbr_plot(settle, pressure, bp125=None, compact=False):
     y_max = np.ceil((y_max * 1.05) / 50.0) * 50.0
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x, y=y, mode="lines",
-                             line=dict(color="red", width=3),
-                             hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(
+        x=x, y=y, mode="lines",
+        line=dict(color="red", width=3),
+        hoverinfo="skip", showlegend=False
+    ))
     fig.add_trace(go.Scatter(
         x=x, y=y, mode="markers",
-        marker=dict(symbol="diamond", size=10,
-                    color="#1f77b4", line=dict(width=1.5, color="#173a6a")),
+        marker=dict(symbol="diamond", size=10, color="#1f77b4", line=dict(width=1.5, color="#173a6a")),
         hovertemplate="Settlement: %{x:.2f} mm<br>Pressure: %{y:.2f} kN/m²<extra></extra>",
         showlegend=False
     ))
     if bp125 is not None:
-        fig.add_shape(type="line", x0=1.25, x1=1.25, y0=0, y1=y_max,
-                      line=dict(color="rgba(255,0,0,0.35)", width=2, dash="dash"))
+        fig.add_shape(
+            type="line", x0=1.25, x1=1.25, y0=0, y1=y_max,
+            line=dict(color="rgba(255,0,0,0.35)", width=2, dash="dash")
+        )
 
+    pad_lr = 60 if compact else 70
     fig.update_layout(
         title=dict(
             text="MEAN BEARING PRESSURE VS SETTLEMENT",
@@ -166,18 +213,28 @@ def pretty_cbr_plot(settle, pressure, bp125=None, compact=False):
             font=dict(size=24 if compact else 28, family="Segoe UI, Arial Black")
         ),
         plot_bgcolor="white",
-        margin=dict(l=70, r=70, t=90 if not compact else 70, b=60),
+        margin=dict(l=pad_lr, r=pad_lr, t=90 if not compact else 70, b=60 if compact else 70),
         height=380 if compact else 520,
         font=dict(family="Segoe UI, Arial, Helvetica, sans-serif",
                   size=13 if compact else 14, color="#333"),
     )
-    fig.update_xaxes(title="SETTLEMENT (MM)", range=[0, x_max], dtick=0.5, gridcolor="rgba(0,0,0,0.1)")
-    fig.update_yaxes(title="MEAN BEARING PRESSURE (kN/m²)", range=[0, y_max], dtick=50, gridcolor="rgba(0,0,0,0.1)")
+    fig.update_xaxes(
+        title="SETTLEMENT (MM)", range=[0, x_max], dtick=0.5,
+        ticks="outside", ticklen=6, tickwidth=1,
+        showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False
+    )
+    fig.update_yaxes(
+        title="MEAN BEARING PRESSURE (kN/m²)", range=[0, y_max], dtick=50,
+        ticks="outside", ticklen=6, tickwidth=1,
+        showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False
+    )
     return fig
 
 def render_cbr_banner(cbr_pct: float, layer: str):
+    """PASS/FAIL banner with round-up rule (14.5→15 pass, 29.5→30 pass)."""
     thresholds = {"Capping Layer": 15.0, "Sub-Base Layer": 30.0}
     rounded_value = round(float(cbr_pct), 1)
+
     def is_pass(req): return round(rounded_value) >= round(req)
 
     if layer in thresholds:
@@ -215,8 +272,24 @@ def render_cbr_banner(cbr_pct: float, layer: str):
         unsafe_allow_html=True,
     )
 
-# ---------------- Math + OCR + UI (unchanged from your version) ----------------
-# (keep your remaining logic for OCR, dataframe, calculations, and plotting)
+def dial_text(label: str, key: str, placeholder: str = " "):
+    """Dial text input; accepts '.' or ','; returns float or None."""
+    raw = st.text_input(label, value="", key=key, placeholder=placeholder)
+    raw = raw.strip()
+    if raw == "" or raw == "-":
+        return None
+    try:
+        return float(raw.replace(",", "."))
+    except ValueError:
+        return None
+
+# ---------------- Formatting Helper ----------------
+def format_df(df, decimals=2):
+    """Round numeric columns and format floats to N decimal places."""
+    df2 = df.copy()
+    for col in df2.select_dtypes(include=["float", "float64", "int"]):
+        df2[col] = df2[col].apply(lambda x: f"{x:.{decimals}f}")
+    return df2
 
 
 # ---------------- OCR Functions ----------------
@@ -273,8 +346,11 @@ def interp_bp_at_1p25(settle, press):
     bp = m * 1.25 + b
     return bp, (x1, y1), (x2, y2), m, b
 
-def k762(bp_at_1p25, cf): return int(np.rint((bp_at_1p25 / 0.00125) * cf))
-def cbr_from_k(kint): return 6.1e-8 * (float(kint) ** 1.733)
+def k762(bp_at_1p25, cf):
+    return int(np.rint((bp_at_1p25 / 0.00125) * cf))
+
+def cbr_from_k(kint):
+    return 6.1e-8 * (float(kint) ** 1.733)
 
 # ---------------- UI ----------------
 st.markdown("<h2>AWK – Equivalent In-Situ CBR</h2>", unsafe_allow_html=True)
@@ -283,11 +359,12 @@ colA, colB = st.columns(2)
 with colA:
     plate = st.selectbox("Plate size (mm)", [300, 455, 610], index=0)
 with colB:
-    cf = st.number_input("Correction Factor (CF)", value=float(CF_DEFAULTS[plate]),
+    cf = st.number_input("Correction Factor (CF)",
+                         value=float(CF_DEFAULTS[plate]),
                          step=0.001, format="%.3f")
 
 # Layer selector + mobile compact toggle
-colC, colD = st.columns([2,1])
+colC, colD = st.columns([2, 1])
 with colC:
     layer = st.selectbox("Layer / Test Type",
                          ["Formation", "Capping Layer", "Sub-Base Layer", "Other"], index=0)
@@ -299,27 +376,49 @@ method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OC
 rows = []
 
 if method == "Manual entry":
+    st.markdown("#### Dial gauge inputs (mm)")
     for L in LOAD_STEPS:
         with st.expander(f"Load {L} kN", expanded=(L in [0, 10])):
             c1, c2, c3, c4 = st.columns([1.1, 1, 1, 1])
+
+            # Library pressure (locked)
             p_val = float(PRESSURE_LIBRARY[plate][L])
-            c1.number_input(f"Bearing pressure @ {L} kN ({PRESSURE_UNITS})",
-                            value=p_val, disabled=True, key=f"p_{L}")
-            d1 = clean_num(c2.text_input("Dial 1 (mm)", "", key=f"d1_{L}"))
-            d2 = clean_num(c3.text_input("Dial 2 (mm)", "", key=f"d2_{L}"))
-            d3 = clean_num(c4.text_input("Dial 3 (mm)", "", key=f"d3_{L}"))
+            c1.number_input(
+                f"Bearing pressure @ {L} kN ({PRESSURE_UNITS})",
+                value=p_val,
+                disabled=True,
+                key=f"p_{L}",
+                step=0.01,
+                format="%.2f",
+            )
+
+            # Dials as text inputs; iOS decimal keypad enforced via JS
+            d1 = dial_text("Dial 1 (mm)", key=f"d1_{L}")
+            d2 = dial_text("Dial 2 (mm)", key=f"d2_{L}")
+            d3 = dial_text("Dial 3 (mm)", key=f"d3_{L}")
+
         rows.append([L, p_val, d1, d2, d3])
 
+    # Require all three dials at all loads
+    if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
+        force_decimal_keypad()
+        st.info("Enter all dial readings to continue.")
+        st.stop()
+
 elif method == "Paste 6×3 dials":
-    pasted = st.text_area("Paste 6×3 table", height=160)
+    pasted = st.text_area("Paste 6×3 table", height=160,
+                          placeholder="e.g.\n25.00 25.00 25.00\n24.00 24.00 23.56\n...")
     if st.button("Submit"):
         dmap = parse_dials_from_text(pasted)
         if not dmap:
-            st.error("Could not parse 6×3 numbers."); st.stop()
+            st.error("Could not parse 6×3 numbers.")
+            st.stop()
         for L in LOAD_STEPS:
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
+    else:
+        st.stop()
 
-else:
+else:  # Photo OCR (beta)
     upl = st.file_uploader("Upload photo", type=["png", "jpg", "jpeg", "webp"])
     if not upl:
         st.info("Upload a clear photo of the dial readings.")
@@ -340,16 +439,26 @@ else:
     if st.button("Submit OCR Data"):
         dmap = parse_dials_from_text(st.session_state["ocr_text"])
         if not dmap:
-            st.error("❌ Couldn’t parse 6×3 readings."); st.stop()
+            st.error("❌ Couldn’t parse 6×3 readings.")
+            st.stop()
         for L in LOAD_STEPS:
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
+    else:
+        st.stop()
+
+# Ensure keypad patch is active for dynamically created inputs
+force_decimal_keypad()
 
 # ---------------- DataFrame ----------------
-if not rows: st.stop()
+if not rows:
+    st.stop()
+
 df = pd.DataFrame(rows, columns=[
     "Load (kN)", f"Bearing Pressure ({PRESSURE_UNITS})", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"
 ])
 df["Avg Dial (mm)"] = df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
+
+# Settlement relative to the 0 kN average dial
 avg0 = df.loc[df["Load (kN)"] == 0, "Avg Dial (mm)"].iloc[0]
 df["Settlement (mm)"] = avg0 - df["Avg Dial (mm)"]
 
@@ -358,7 +467,8 @@ bp125, p1a, p1b, m, b = interp_bp_at_1p25(
     df["Settlement (mm)"], df[f"Bearing Pressure ({PRESSURE_UNITS})"]
 )
 if bp125 is None:
-    st.warning("1.25 mm outside range."); st.stop()
+    st.warning("1.25 mm outside range.")
+    st.stop()
 
 kint = k762(bp125, cf)
 cbr_pct = round(cbr_from_k(kint), 1)
@@ -366,11 +476,15 @@ cbr_pct = round(cbr_from_k(kint), 1)
 # ---------------- Results banner ----------------
 render_cbr_banner(cbr_pct, layer)
 
-# Compact numeric summary
+# Compact numeric summary + max settlement display
+max_settlement = df["Settlement (mm)"].max()
+
 st.write(
     f"**BP@1.25mm (interpolated):** {bp125:.2f} {PRESSURE_UNITS}  "
-    f"**k₇₆₂:** {kint:,}  **CF:** {cf:.3f}  **Plate:** {plate} mm"
+    f"**k₇₆₂:** {kint:,}  **CF:** {cf:.3f}  **Plate:** {plate} mm  "
+    f"**Max Settlement:** {max_settlement:.2f} mm"
 )
+
 
 # ---------------- Plot (right under banner) ----------------
 fig = pretty_cbr_plot(
@@ -386,12 +500,13 @@ bp_map = pd.DataFrame({
     "Load (kN)": LOAD_STEPS,
     f"Bearing Pressure ({PRESSURE_UNITS})": [PRESSURE_LIBRARY[plate][L] for L in LOAD_STEPS],
 })
-with st.expander("Load → Bearing Pressure used", expanded=True):
-    st.dataframe(bp_map, use_container_width=True, height=260)
+with st.expander("Load → Bearing Pressure used", expanded=False):
+    st.dataframe(format_df(bp_map), use_container_width=True, height=260)
 
-with st.expander("Readings table", expanded=False):
+# Readings table (keep OPEN)
+with st.expander("Readings table", expanded=True):
     st.dataframe(
-        df[["Load (kN)", "Avg Dial (mm)", "Settlement (mm)", f"Bearing Pressure ({PRESSURE_UNITS})"]],
+        format_df(df[["Load (kN)", "Avg Dial (mm)", "Settlement (mm)", f"Bearing Pressure ({PRESSURE_UNITS})"]]),
         use_container_width=True, height=280
     )
 
@@ -405,4 +520,4 @@ if not lower.empty and not upper.empty:
     ]
     bracket.insert(0, "Role", ["Before 1.25 mm", "After 1.25 mm"])
     with st.expander("Points used for interpolation at 1.25 mm", expanded=True):
-        st.dataframe(bracket, use_container_width=True, height=200)
+        st.dataframe(format_df(bracket), use_container_width=True, height=200)
