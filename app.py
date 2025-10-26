@@ -388,64 +388,63 @@ with colD:
 method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
 rows = []
 
-# ---------------- Manual entry (single editable table) ----------------
+
 # ---------------- Manual entry (single editable table + live Settlement) ----------------
+# ---------------- Manual entry (single editable table WITH Settlement) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # Initialise editable dial table (fixed Load values)
-    init_df = pd.DataFrame({
-        "Load (kN)": LOAD_STEPS,
-        "Dial 1 (mm)": [np.nan] * len(LOAD_STEPS),
-        "Dial 2 (mm)": [np.nan] * len(LOAD_STEPS),
-        "Dial 3 (mm)": [np.nan] * len(LOAD_STEPS),
-    })
-
+    # Initialise once
     if "dial_df" not in st.session_state:
-        st.session_state["dial_df"] = init_df.copy()
+        st.session_state["dial_df"] = pd.DataFrame({
+            "Load (kN)": LOAD_STEPS,
+            "Dial 1 (mm)": [np.nan] * len(LOAD_STEPS),
+            "Dial 2 (mm)": [np.nan] * len(LOAD_STEPS),
+            "Dial 3 (mm)": [np.nan] * len(LOAD_STEPS),
+        })
 
-    dial_df = st.data_editor(
-        st.session_state["dial_df"],
+    # Compute Settlement from the CURRENT state (so the column shows up-to-date values)
+    tmp = st.session_state["dial_df"].copy()
+    if tmp[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].notna().all(axis=None):
+        tmp["Avg Dial (mm)"] = tmp[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
+        avg0 = tmp.loc[tmp["Load (kN)"] == 0, "Avg Dial (mm)"].iloc[0]
+        tmp["Settlement (mm)"] = (avg0 - tmp["Avg Dial (mm)"]).round(2)
+    else:
+        tmp["Settlement (mm)"] = np.nan  # until all three dials per row are filled
+
+    # Show a single editor with Settlement read-only
+    edited = st.data_editor(
+        tmp[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)", "Settlement (mm)"]],
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
         column_config={
             "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
-            "Dial 1 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01),
-            "Dial 2 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01),
-            "Dial 3 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01),
+            "Dial 1 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 1"),
+            "Dial 2 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 2"),
+            "Dial 3 (mm)": st.column_config.NumberColumn(format="%.2f", step=0.01, help="Enter Dial 3"),
+            "Settlement (mm)": st.column_config.NumberColumn(format="%.2f", disabled=True),
         },
         key="dial_table",
     )
 
-    # Save edits to session state
-    st.session_state["dial_df"] = dial_df.copy()
+    # Persist only the editable parts back to state
+    st.session_state["dial_df"] = edited[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].copy()
 
-    # Ensure all three dials are filled
+    # Validate
+    dial_df = st.session_state["dial_df"]
     if dial_df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
-        st.info("Please enter all dial readings (three per load) to continue.")
+        st.info("Please enter **all** dial readings (three per load) to continue.")
         st.stop()
 
-    # --- Compute average and settlement ---
-    dial_df["Avg Dial (mm)"] = dial_df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axis=1)
-    avg0 = dial_df.loc[dial_df["Load (kN)"] == 0, "Avg Dial (mm)"].iloc[0]
-    dial_df["Settlement (mm)"] = (avg0 - dial_df["Avg Dial (mm)"]).round(2)
-
-    # Display working table
-    st.markdown("##### Working Table (with Settlement)")
-    st.dataframe(
-        dial_df[["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)", "Settlement (mm)"]],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # Prepare rows for downstream processing
+    # Build rows for downstream calculations
     rows = []
     for _, r in dial_df.iterrows():
         L = int(r["Load (kN)"])
-        d1, d2, d3 = r["Dial 1 (mm)"], r["Dial 2 (mm)"], r["Dial 3 (mm)"]
+        d1, d2, d3 = float(r["Dial 1 (mm)"]), float(r["Dial 2 (mm)"]), float(r["Dial 3 (mm)"])
         p_val = float(PRESSURE_LIBRARY[plate][L])
         rows.append([L, p_val, d1, d2, d3])
+
 
 
 elif method == "Paste 6×3 dials":
