@@ -65,28 +65,50 @@ def check_password():
 
     return False
 
-
-
-
 # ---- Stop here until password is correct ----
 if not check_password():
     st.stop()
 
-# From here on: your main app (render_logo(), inputs, charts, tables, etc.)
-render_logo()
-
-# ---------- Responsive layout / mobile polish ----------
-st.markdown("""
-...
-""", unsafe_allow_html=True)
-# ---------------- Logo ----------------
+# ---------------- Logo (DEFINE FIRST, then call it) ----------------
 def render_logo(max_width=350):
-    ...
-    # (function body)
-    ...
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        "Round AWK Logo.jpg",
+        "awk_logo.jpg",
+        "Round LOGO AWK (1).jpg",
+    ]
+    logo_path = None
+    for name in candidates:
+        p = os.path.join(base_dir, name)
+        if os.path.isfile(p):
+            logo_path = p
+            break
 
-render_logo()   # <-- keep this one
+    if not logo_path:
+        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
+        return
 
+    try:
+        with Image.open(logo_path) as img:
+            ratio = max_width / float(img.width)
+            new_height = int(img.height * ratio)
+            img = img.resize((max_width, new_height))
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        st.markdown(
+            f"""
+            <div style="text-align:center;">
+                <img src="data:image/png;base64,{img_b64}" width="{max_width}" />
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    except Exception as e:
+        st.warning(f"⚠️ Could not load logo: {e}")
+
+# ✅ Now call it ONCE (after it’s defined)
+render_logo()
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
@@ -107,6 +129,7 @@ h2 { text-align:center; letter-spacing:.3px; }
 .awk-banner { margin: 10px 0 14px 0; }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ---------- iPhone decimal keypad: hard-force ----------
 def force_decimal_keypad():
