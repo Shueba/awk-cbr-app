@@ -21,9 +21,31 @@ def set_tesseract_path():
 set_tesseract_path()
 
 # ---- Password protection ----
+def _welcome_banner():
+    st.markdown(
+        """
+        <div style="
+            margin:10px auto 14px auto; max-width:900px;
+            padding:14px 16px; border:1px solid #1976d2;
+            background:#e3f2fd; color:#0d47a1; border-radius:12px;">
+          <div style="font-size:16px; font-weight:700; letter-spacing:.2px;">
+            WELCOME TO AWK GROUND TESTING APP
+          </div>
+          <div style="font-size:13px; margin-top:6px;">
+            Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
+            plots, and tables.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
-    if not pw:
+    # Always show the banner on the login page
+    _welcome_banner()
+
+    if not pw:  # no password set
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
 
@@ -37,11 +59,12 @@ def check_password():
     if ok:
         if entered == pw:
             st.session_state["auth_ok"] = True
-            st.rerun()  # <— use this (not st.experimental_rerun)
+            st.rerun()
         else:
             st.sidebar.error("Incorrect password")
 
     return False
+
 
 # ---- Stop here until the password is correct ----
 if not check_password():
