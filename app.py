@@ -24,30 +24,34 @@ set_tesseract_path()
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
 
-    # --- Centered logo and welcome text ---
-    st.markdown(
-        """
-        <div style='text-align:center; padding-top:30px;'>
-            <img src='https://raw.githubusercontent.com/Shueba/awk-cbr-app/main/Round%20AWK%20Logo.jpg'
-                 width='280' style='border-radius:15px; margin-bottom:20px;'>
-            <h2 style='color:#003366; margin-bottom:6px;'>WELCOME TO AWK GROUND TESTING APP</h2>
-            <p style='font-size:16px; color:#333; max-width:500px; margin:auto;'>
-                Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
-                plots, and tables.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # Already authenticated? Don't render the login/welcome UI
+    if st.session_state.get("auth_ok"):
+        return True
 
-    # --- Password logic ---
+    # --- Show welcome + logo ONLY on the login page ---
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        st.markdown(
+            """
+            <div style='text-align:center; padding-top:18px;'>
+                <img src='https://raw.githubusercontent.com/Shueba/awk-cbr-app/main/Round%20AWK%20Logo.jpg'
+                     width='260' style='margin-bottom:12px;'>
+                <h3 style='color:#003366; margin:0;'>WELCOME TO AWK GROUND TESTING APP</h3>
+                <p style='font-size:15px; color:#333; max-width:520px; margin:6px auto 0;'>
+                    Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
+                    plots, and tables.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # No password configured -> unlocked
     if not pw:
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
 
-    if st.session_state.get("auth_ok"):
-        return True
-
+    # Sidebar login form
     with st.sidebar.form("login", clear_on_submit=False):
         entered = st.text_input("Password", type="password")
         ok = st.form_submit_button("Sign in")
@@ -63,15 +67,13 @@ def check_password():
 
 
 
+
 # ---- Stop here until password is correct ----
 if not check_password():
     st.stop()
 
-# 🚫 Stop the app if password not entered correctly
-if not check_password():
-    st.stop()
-
-
+# From here on: your main app (render_logo(), inputs, charts, tables, etc.)
+render_logo()
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
