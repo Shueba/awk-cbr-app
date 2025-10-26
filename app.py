@@ -24,27 +24,23 @@ set_tesseract_path()
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
 
-    # --- Welcome + Logo section (always visible) ---
-    col1, col2 = st.columns([1, 2])
-    with col2:
-        st.markdown(
-            """
-            <h3 style='text-align:center; color:#003366;'>WELCOME TO AWK GROUND TESTING APP</h3>
-            <p style='text-align:center; color:#333;'>
-            Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR, plots, and tables.
+    # --- Centered logo and welcome text ---
+    st.markdown(
+        """
+        <div style='text-align:center; padding-top:30px;'>
+            <img src='https://raw.githubusercontent.com/Shueba/awk-cbr-app/main/Round%20AWK%20Logo.jpg'
+                 width='280' style='border-radius:15px; margin-bottom:20px;'>
+            <h2 style='color:#003366; margin-bottom:6px;'>WELCOME TO AWK GROUND TESTING APP</h2>
+            <p style='font-size:16px; color:#333; max-width:500px; margin:auto;'>
+                Use this tool on site to enter dial readings and view the Equivalent In-Situ CBR,
+                plots, and tables.
             </p>
-            """,
-            unsafe_allow_html=True
-        )
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-        # Try to show the AWK logo
-        try:
-            img = Image.open("Round AWK Logo.jpg")
-            st.image(img, width=300, use_column_width=False)
-        except Exception as e:
-            st.warning(f"⚠️ Could not load logo: {e}")
-
-    # --- Password input ---
+    # --- Password logic ---
     if not pw:
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
@@ -64,6 +60,7 @@ def check_password():
             st.sidebar.error("Incorrect password")
 
     return False
+
 
 
 # ---- Stop here until password is correct ----
