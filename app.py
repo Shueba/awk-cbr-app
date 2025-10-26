@@ -389,64 +389,55 @@ method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OC
 rows = []
 
 
-# ---------------- Manual entry (stable; single table; no settlement col) ----------------
+## ---------------- Manual entry (stable grid; no disappearing values) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # 1) Initialise once and only once
-    if "dial_df" not in st.session_state:
-        st.session_state["dial_df"] = pd.DataFrame({
-            "Load (kN)": LOAD_STEPS,                 # fixed loads
-            "Dial 1 (mm)": ["" for _ in LOAD_STEPS], # keep as strings so typing never gets wiped
-            "Dial 2 (mm)": ["" for _ in LOAD_STEPS],
-            "Dial 3 (mm)": ["" for _ in LOAD_STEPS],
-        })
+    # 1) Initialise once (each cell kept in session_state)
+    if "dials_state" not in st.session_state:
+        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
-    # 2) Show editor with a STABLE key; Load column read-only
-    edited = st.data_editor(
-        st.session_state["dial_df"],
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-        column_order=["Load (kN)", "Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"],
-        column_config={
-            "Load (kN)": st.column_config.NumberColumn(format="%.0f", step=10, disabled=True),
-            # Leave Dial columns as free text so partial inputs like "22," aren't rejected mid-typing
-        },
-        key="dial_editor",  # <— important: stable key so the widget keeps its state
-    )
+    # 2) Render a table-like grid of text inputs (no validation while typing)
+    head = st.columns([1, 1.3, 1.3, 1.3])
+    head[0].markdown("**Load (kN)**")
+    head[1].markdown("**Dial 1 (mm)**")
+    head[2].markdown("**Dial 2 (mm)**")
+    head[3].markdown("**Dial 3 (mm)**")
 
-    # 3) Persist user edits to session_state BEFORE any st.stop() or further widgets
-    st.session_state["dial_df"] = edited.copy()
+    for L in LOAD_STEPS:
+        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
+        c0.write(f"{L:.0f}")
+        v1 = c1.text_input("", value=st.session_state["dials_state"][L][0],
+                           key=f"dial_{L}_1", placeholder="e.g. 23.56")
+        v2 = c2.text_input("", value=st.session_state["dials_state"][L][1],
+                           key=f"dial_{L}_2", placeholder="e.g. 24,50")
+        v3 = c3.text_input("", value=st.session_state["dials_state"][L][2],
+                           key=f"dial_{L}_3", placeholder="e.g. 25.00")
 
-    # 4) Convert strings to floats AFTER editing (accept '.' or ',')
+        # keep latest edits
+        st.session_state["dials_state"][L] = [v1, v2, v3]
+
+    # 3) Parse AFTER editing (accepts 23.56 or 23,56)
     def _to_float(s):
         s = str(s).strip()
         if s in ("", "-", "None", "nan"):
-            return np.nan
+            return None
         try:
             return float(s.replace(",", "."))
         except Exception:
-            return np.nan
+            return None
 
-    parsed = pd.DataFrame({
-        "Load (kN)": edited["Load (kN)"],
-        "Dial 1 (mm)": edited["Dial 1 (mm)"].map(_to_float),
-        "Dial 2 (mm)": edited["Dial 2 (mm)"].map(_to_float),
-        "Dial 3 (mm)": edited["Dial 3 (mm)"].map(_to_float),
-    })
-
-    # 5) Require all dials provided before continuing
-    if parsed[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].isna().any().any():
-        st.info("Please fill all three dial readings for each load. Both `23.56` and `23,56` are OK.")
-        st.stop()
-
-    # 6) Build rows for the rest of your pipeline
     rows = []
-    for _, r in parsed.iterrows():
-        L = int(r["Load (kN)"])
+    for L in LOAD_STEPS:
+        d1s, d2s, d3s = st.session_state["dials_state"][L]
+        d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
         p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, float(r["Dial 1 (mm)"]), float(r["Dial 2 (mm)"]), float(r["Dial 3 (mm)"])])
+        rows.append([L, p_val, d1, d2, d3])
+
+    # 4) Require all cells filled before continuing
+    if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
+        st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
+        st.stop()
 
 
 
