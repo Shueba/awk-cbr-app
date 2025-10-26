@@ -20,12 +20,11 @@ def set_tesseract_path():
             pytesseract.pytesseract.tesseract_cmd = cmd
 set_tesseract_path()
 
+# ---- Password protection ----
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
-    # Always show the banner on the login page
-    _welcome_banner()
 
-    if not pw:  # no password set
+    if not pw:
         st.sidebar.info("APP_PASSWORD not set; app is unlocked.")
         return True
 
@@ -45,12 +44,9 @@ def check_password():
 
     return False
 
-
-# ---- Stop here until the password is correct ----
+# ---- Stop here until password is correct ----
 if not check_password():
     st.stop()
-
-# (your existing code continues BELOW this line: CSS, logo, etc.)
 
 # ---------- Responsive layout / mobile polish ----------
 st.markdown("""
@@ -74,15 +70,9 @@ h2 { text-align:center; letter-spacing:.3px; }
 
 # ---------------- Logo ----------------
 def render_logo(max_width=350):
-    import os, io, base64
-    from PIL import Image
-
+    import io, base64
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        "Round AWK Logo.jpg",
-        "awk_logo.jpg",
-        "Round LOGO AWK (1).jpg",  # legacy name if you committed this
-    ]
+    candidates = ["Round AWK Logo.jpg", "awk_logo.jpg", "Round LOGO AWK (1).jpg"]
 
     logo_path = None
     for name in candidates:
@@ -92,7 +82,7 @@ def render_logo(max_width=350):
             break
 
     if not logo_path:
-        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
+        st.warning("⚠️ Could not load logo: file not found.")
         return
 
     try:
@@ -100,7 +90,6 @@ def render_logo(max_width=350):
             ratio = max_width / float(img.width)
             new_height = int(img.height * ratio)
             img = img.resize((max_width, new_height))
-
             buffer = io.BytesIO()
             img.save(buffer, format="PNG")
             img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -116,7 +105,7 @@ def render_logo(max_width=350):
     except Exception as e:
         st.warning(f"⚠️ Could not load logo: {e}")
 
-# Call it once
+# Show logo once
 render_logo()
 
 # ---------------- Constants ----------------
@@ -125,8 +114,8 @@ LOAD_STEPS = [0, 10, 20, 30, 40, 50]
 PRESSURE_UNITS = "kN/m²"
 PRESSURE_LIBRARY = {
     300: {0: 0.00, 10: 145.97, 20: 288.01, 30: 435.70, 40: 577.17, 50: 718.64},
-    455: {0: 0.00, 10:  64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
-    610: {0: 0.00, 10:  36.43, 20:  71.08, 30: 106.51, 40: 140.73, 50: 174.95},
+    455: {0: 0.00, 10: 64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
+    610: {0: 0.00, 10: 36.43, 20: 71.08, 30: 106.51, 40: 140.73, 50: 174.95},
 }
 
 # ---------------- Helpers ----------------
@@ -170,40 +159,25 @@ def pretty_cbr_plot(settle, pressure, bp125=None, compact=False):
         fig.add_shape(type="line", x0=1.25, x1=1.25, y0=0, y1=y_max,
                       line=dict(color="rgba(255,0,0,0.35)", width=2, dash="dash"))
 
-    # --- make it visually centered & tidy ---
-    pad_lr = 60 if compact else 70  # equal left/right padding
     fig.update_layout(
         title=dict(
             text="MEAN BEARING PRESSURE VS SETTLEMENT",
-            x=0.5, xanchor="center", y=0.95,  # center over figure
+            x=0.5, xanchor="center", y=0.95,
             font=dict(size=24 if compact else 28, family="Segoe UI, Arial Black")
         ),
         plot_bgcolor="white",
-        margin=dict(l=pad_lr, r=pad_lr, t=90 if not compact else 70, b=60 if compact else 70),
+        margin=dict(l=70, r=70, t=90 if not compact else 70, b=60),
         height=380 if compact else 520,
         font=dict(family="Segoe UI, Arial, Helvetica, sans-serif",
                   size=13 if compact else 14, color="#333"),
     )
-    fig.update_xaxes(
-        title="SETTLEMENT (MM)", range=[0, x_max], dtick=0.5,
-        ticks="outside", ticklen=6, tickwidth=1,
-        showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False,
-        title_standoff=8
-    )
-    fig.update_yaxes(
-        title="MEAN BEARING PRESSURE (kN/m²)", range=[0, y_max], dtick=50,
-        ticks="outside", ticklen=6, tickwidth=1,
-        showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False,
-        title_standoff=8
-    )
+    fig.update_xaxes(title="SETTLEMENT (MM)", range=[0, x_max], dtick=0.5, gridcolor="rgba(0,0,0,0.1)")
+    fig.update_yaxes(title="MEAN BEARING PRESSURE (kN/m²)", range=[0, y_max], dtick=50, gridcolor="rgba(0,0,0,0.1)")
     return fig
 
-
 def render_cbr_banner(cbr_pct: float, layer: str):
-    """PASS/FAIL banner with round-up rule (14.5→15 pass, 29.5→30 pass)."""
     thresholds = {"Capping Layer": 15.0, "Sub-Base Layer": 30.0}
-    rounded_value = round(float(cbr_pct), 1)      # display rounding
-    # comparison uses whole-number rounding
+    rounded_value = round(float(cbr_pct), 1)
     def is_pass(req): return round(rounded_value) >= round(req)
 
     if layer in thresholds:
@@ -240,6 +214,10 @@ def render_cbr_banner(cbr_pct: float, layer: str):
         """,
         unsafe_allow_html=True,
     )
+
+# ---------------- Math + OCR + UI (unchanged from your version) ----------------
+# (keep your remaining logic for OCR, dataframe, calculations, and plotting)
+
 
 # ---------------- OCR Functions ----------------
 def easyocr_image_to_text(pil_img):
