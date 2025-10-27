@@ -472,11 +472,11 @@ if method == "Manual entry":
 
         # --- use text_input but mark as numeric type for iPhone ---
         v1 = c1.text_input("Dial 1 (mm)", value=st.session_state["dials_state"][L][0],
-                           key=f"d1_{L}", placeholder="e.g. 23.56")
+                           key=f"d1_{L}", placeholder="")
         v2 = c2.text_input("Dial 2 (mm)", value=st.session_state["dials_state"][L][1],
-                           key=f"d2_{L}", placeholder="e.g. 24.56")
+                           key=f"d2_{L}", placeholder="")
         v3 = c3.text_input("Dial 3 (mm)", value=st.session_state["dials_state"][L][2],
-                           key=f"d3_{L}", placeholder="e.g. 25.00")
+                           key=f"d3_{L}", placeholder="")
 
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
