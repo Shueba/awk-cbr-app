@@ -7,10 +7,11 @@ from PIL import Image
 import pytesseract
 import streamlit.components.v1 as components
 
-# ---- MUST be the first Streamlit command ----
+# =========================
+# App & environment
+# =========================
 st.set_page_config(page_title="AWK – Equivalent In-Situ CBR", layout="centered")
 
-# ---- Tesseract path (works on Windows + Streamlit Cloud) ----
 def set_tesseract_path():
     if platform.system().lower().startswith("win"):
         pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -20,22 +21,22 @@ def set_tesseract_path():
             pytesseract.pytesseract.tesseract_cmd = cmd
 set_tesseract_path()
 
-# ---- Small HTML injector helper (safe on all Streamlit versions) ----
+# =========================
+# HTML injector (must use st.html, not iframe)
+# =========================
 def _html(snippet: str, height: int = 0):
-    try:
-        st.html(snippet, height=height)
-    except Exception:
-        components.html(snippet, height=height, scrolling=False)
+    assert hasattr(st, "html"), "st.html not available. Please upgrade Streamlit."
+    st.html(snippet, height=height)
 
-# ---- Password protection ----
+# =========================
+# Password protection
+# =========================
 def check_password():
     pw = st.secrets.get("APP_PASSWORD")
 
-    # Already authenticated
     if st.session_state.get("auth_ok"):
         return True
 
-    # --- Main login screen content ---
     st.markdown(
         """
         <div style='text-align:center; padding:28px 8px 6px;'>
@@ -58,7 +59,7 @@ def check_password():
             st.session_state["auth_ok"] = True
             st.rerun()
         else:
-            st.error("❌ Incorrect password. Please try again.")
+            st.error("Incorrect password. Please try again.")
 
     if not pw:
         st.info("APP_PASSWORD not set; app is currently unlocked.")
@@ -66,48 +67,44 @@ def check_password():
 
     return False
 
-# ---- Stop here until password is correct ----
 if not check_password():
     st.stop()
 
-# ---------- Responsive layout / mobile polish ----------
+# =========================
+# Mobile polish CSS
+# =========================
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] > .main { padding-top: .6rem; }
-.block-container {
-    max-width: 1000px;
-    padding-left: 1.0rem; padding-right: 1.0rem;
-    margin-left: auto; margin-right: auto;
-}
+.block-container { max-width: 1000px; padding-left: 1.0rem; padding-right: 1.0rem; margin: 0 auto; }
 .stButton > button { border-radius: 10px; padding: .65rem 1rem; }
 @media (max-width: 640px) { .stButton > button { width: 100%; } }
 h2 { text-align:center; letter-spacing:.3px; }
 @media (max-width: 640px) {
-    .block-container { padding-left:.6rem; padding-right:.6rem; }
-    .stDataFrame { font-size: .9rem; }
+  .block-container { padding-left:.6rem; padding-right:.6rem; }
+  .stDataFrame { font-size: .9rem; }
 }
 .awk-banner { margin: 10px 0 14px 0; }
 
-/* Hide number steppers */
+/* If any number_input remains, hide steppers just in case */
 [data-testid="stNumberInput"] button[aria-label="Increment"],
-[data-testid="stNumberInput"] button[aria-label="Decrement"] {display: none !important;}
-[data-testid="stNumberInput"] label {display: none !important;}
-[data-testid="stNumberInput"] input {
-    padding: 10px 12px !important;
-    text-align: left !important;
-}
+[data-testid="stNumberInput"] button[aria-label="Decrement"] { display: none !important; }
+[data-testid="stNumberInput"] label { display: none !important; }
+[data-testid="stNumberInput"] input { padding: 10px 12px !important; text-align: left !important; }
 [data-testid="stNumberInput"] input::placeholder { color: #bbb; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Logo ----------------
+# =========================
+# Logo
+# =========================
 def render_logo(max_width=350):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = ["Round AWK Logo.jpg", "awk_logo.jpg", "Round LOGO AWK (1).jpg"]
     logo_path = next((os.path.join(base_dir, name) for name in candidates
                       if os.path.isfile(os.path.join(base_dir, name))), None)
     if not logo_path:
-        st.warning(f"⚠️ Could not load logo: tried {candidates} in {base_dir}")
+        st.warning(f"Could not load logo: tried {candidates} in {base_dir}")
         return
     try:
         with Image.open(logo_path) as img:
@@ -124,21 +121,25 @@ def render_logo(max_width=350):
             unsafe_allow_html=True,
         )
     except Exception as e:
-        st.warning(f"⚠️ Could not load logo: {e}")
+        st.warning(f"Could not load logo: {e}")
 
 render_logo()
 
-# ---------------- Constants ----------------
+# =========================
+# Constants
+# =========================
 CF_DEFAULTS = {300: 0.442, 455: 0.629, 610: 0.816}
 LOAD_STEPS = [0, 10, 20, 30, 40, 50]
-PRESSURE_UNITS = "kN/m²"
+PRESSURE_UNITS = "kN/m^2"   # ASCII only
 PRESSURE_LIBRARY = {
     300: {0: 0.00, 10: 145.97, 20: 288.01, 30: 435.70, 40: 577.17, 50: 718.64},
     455: {0: 0.00, 10:  64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
     610: {0: 0.00, 10:  36.43, 20:  71.08, 30: 106.51, 40: 140.73, 50: 174.95},
 }
 
-# ---------------- Helpers ----------------
+# =========================
+# Helpers & math
+# =========================
 def _to_float(x) -> float:
     """Safely convert a string (allowing ',' or '.') to float. Empty/None -> 0.0."""
     if x is None:
@@ -151,43 +152,28 @@ def _to_float(x) -> float:
 
 def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool = True, placeholder: str = "") -> str:
     """
-    Streamlit text_input that forces iPhone numeric keypad by setting inputmode on
-    the exact input inside a uniquely-ID'd wrapper. Robust across rerenders.
+    Streamlit text_input that forces iPhone numeric keypad by setting inputmode on THIS field (top-level DOM).
+    Returns a cleaned string. Keep label UNIQUE per widget to avoid ambiguity.
     """
-    wrapper_id = f"wrap_{key}"
-    # Unique wrapper
-    st.markdown(f'<div id="{wrapper_id}"></div>', unsafe_allow_html=True)
-
-    # The actual text input (keeps Streamlit state)
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
     input_mode = 'decimal' if allow_decimal else 'numeric'
     _html(f"""
     <script>
-      (function() {{
-        const WRAP_ID = {wrapper_id!r};
-        function patch() {{
-          const wrap = document.getElementById(WRAP_ID);
-          if (!wrap) return;
-
-          // Find the input that belongs to this widget: nearest input that follows the wrapper
-          // We look forward in the DOM for the first input element in the same block
-          let el = null;
-          // Search within the nearest Streamlit block (walk siblings)
-          let node = wrap.nextElementSibling;
-          let tries = 0;
-          while (node && tries < 10 && !el) {{
-            el = node.querySelector ? node.querySelector('input') : null;
-            node = node.nextElementSibling;
-            tries++;
-          }}
-
-          if (el) {{
-            el.setAttribute('inputmode', '{input_mode}');
-            el.setAttribute('autocomplete','off');
-            el.setAttribute('autocorrect','off');
-            el.setAttribute('spellcheck','false');
-            el.setAttribute('pattern', '[0-9]*');
+      (function(){{
+        const wanted = {label!r};
+        function patchOne() {{
+          const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
+          const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
+          if (!el) return false;
+          try {{ el.type = 'text'; }} catch(e) {{ }}
+          el.setAttribute('inputmode', '{input_mode}');
+          el.setAttribute('autocomplete','off');
+          el.setAttribute('autocorrect','off');
+          el.setAttribute('spellcheck','false');
+          el.setAttribute('enterkeyhint','done');
+          el.setAttribute('pattern', '[0-9]*');
+          if (!el._awk_patched) {{
             el.addEventListener('input', () => {{
               let v = el.value || "";
               v = v.replace(/[^0-9.]/g, "");
@@ -196,12 +182,16 @@ def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool 
               if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
               el.value = v;
             }});
+            el._awk_patched = true;
           }}
+          return true;
         }}
-
-        // Patch now and after rerenders
-        patch();
-        new MutationObserver(patch).observe(document.body, {{childList: true, subtree: true}});
+        // try now; if not found yet, retry shortly (streamlit render timing)
+        if (!patchOne()) {{
+          setTimeout(patchOne, 0);
+          setTimeout(patchOne, 50);
+          setTimeout(patchOne, 150);
+        }}
       }})();
     </script>
     """, height=0)
@@ -214,7 +204,6 @@ def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool 
     if s.count(".") > 1:
         i = s.find("."); s = s[:i+1] + s[i+1:].replace(".", "")
     return s
-
 
 def parse_dials_from_text(text: str):
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
@@ -239,7 +228,7 @@ def pretty_cbr_plot(settle, pressure, bp125=None, compact=False):
     fig.add_trace(go.Scatter(
         x=x, y=y, mode="markers",
         marker=dict(symbol="diamond", size=10, color="#1f77b4", line=dict(width=1.5, color="#173a6a")),
-        hovertemplate="Settlement: %{x:.2f} mm<br>Pressure: %{y:.2f} kN/m²<extra></extra>",
+        hovertemplate="Settlement: %{x:.2f} mm<br>Pressure: %{y:.2f} kN/m^2<extra></extra>",
         showlegend=False
     ))
     if bp125 is not None:
@@ -256,7 +245,7 @@ def pretty_cbr_plot(settle, pressure, bp125=None, compact=False):
     )
     fig.update_xaxes(title="SETTLEMENT (MM)", range=[0, x_max], dtick=0.5, ticks="outside",
                      ticklen=6, tickwidth=1, showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False)
-    fig.update_yaxes(title="MEAN BEARING PRESSURE (kN/m²)", range=[0, y_max], dtick=50, ticks="outside",
+    fig.update_yaxes(title="MEAN BEARING PRESSURE (kN/m^2)", range=[0, y_max], dtick=50, ticks="outside",
                      ticklen=6, tickwidth=1, showgrid=True, gridcolor="rgba(0,0,0,0.10)", zeroline=False)
     return fig
 
@@ -355,83 +344,86 @@ def k762(bp_at_1p25, cf):
 def cbr_from_k(kint):
     return 6.1e-8 * (float(kint) ** 1.733)
 
-# ---------------- UI ----------------
+# =========================
+# UI – Controls
+# =========================
 st.markdown("<h2>AWK – Equivalent In-Situ CBR</h2>", unsafe_allow_html=True)
 
 colA, colB = st.columns(2)
 with colA:
     plate = st.selectbox("Plate size (mm)", [300, 455, 610], index=0)
 with colB:
-    cf = st.number_input("Correction Factor (CF)",
-                         value=float(CF_DEFAULTS[plate]),
-                         step=0.001, format="%.3f")
+    cf = st.number_input("Correction Factor (CF)", value=float(CF_DEFAULTS[plate]), step=0.001, format="%.3f")
 
-# Layer selector + mobile compact toggle
 colC, colD = st.columns([2, 1])
 with colC:
-    layer = st.selectbox("Layer / Test Type",
-                         ["Formation", "Capping Layer", "Sub-Base Layer", "Other"], index=0)
+    layer = st.selectbox("Layer / Test Type", ["Formation", "Capping Layer", "Sub-Base Layer", "Other"], index=0)
 with colD:
-    mobile = st.toggle("📱 Compact layout", value=True,
-                       help="Optimised height/margins for phone/tablet.")
+    mobile = st.toggle("Compact layout", value=True, help="Optimised height/margins for phone/tablet.")
 
-method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
+method = st.radio("Input method", ["Manual entry", "Paste 6x3 dials", "Photo OCR (beta)"], index=0)
+
 rows = []
 
-st.html("""
-<script>
-(function () {
-  function patch() {
-    const inputs = document.querySelectorAll('input[aria-label]');
-    inputs.forEach(el => {
-      const a = (el.getAttribute('aria-label') || '').toLowerCase();
-      // target your dial fields; adjust if you rename labels
-      if (a.includes('dial') || a.includes('(mm)')) {
-        // ensure it's a plain text field, not type=number
-        try { el.type = 'text'; } catch(e) {}
-        el.setAttribute('inputmode', 'decimal');   // 'numeric' if you want integers only
-        el.setAttribute('pattern', '[0-9]*');
-        el.setAttribute('enterkeyhint', 'done');
-        el.setAttribute('autocomplete','off');
-        el.setAttribute('autocorrect','off');
-        el.setAttribute('spellcheck','false');
+# =========================
+# Manual Entry (iPhone keypad on every dial)
+# =========================
+if method == "Manual entry":
+    st.markdown("#### Dial gauge inputs (mm)")
 
-        // live sanitise to digits + at most one dot
-        if (!el._awk_patched) {
-          el.addEventListener('input', () => {
-            let v = el.value || "";
-            v = v.replace(/[^0-9.]/g, "");
-            const p = v.indexOf(".");
-            if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
-            el.value = v;
-          });
-          el._awk_patched = true;
-        }
-      }
-    });
-  }
-  // run now and on future rerenders
-  patch();
-  new MutationObserver(patch).observe(document.body, {childList:true, subtree:true});
-})();
-</script>
-""", height=0)
+    if "dials_state" not in st.session_state:
+        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
+    h0, h1, h2, h3 = st.columns([1, 1.3, 1.3, 1.3])
+    h0.markdown("**Load (kN)**")
+    h1.markdown("**Dial 1 (mm)**")
+    h2.markdown("**Dial 2 (mm)**")
+    h3.markdown("**Dial 3 (mm)**")
+
+    for L in LOAD_STEPS:
+        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
+        c0.write(f"{L:.0f}")
+        with c1:
+            d1 = ios_number_input(f"Dial 1 (mm) – {L} kN", key=f"d1_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][0])
+        with c2:
+            d2 = ios_number_input(f"Dial 2 (mm) – {L} kN", key=f"d2_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][1])
+        with c3:
+            d3 = ios_number_input(f"Dial 3 (mm) – {L} kN", key=f"d3_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][2])
+        st.session_state["dials_state"][L] = [d1, d2, d3]
+
+    # Build rows (require all three values for each load)
+    for L in LOAD_STEPS:
+        d1s, d2s, d3s = st.session_state["dials_state"][L]
+        if any((v is None or v.strip() == "") for v in [d1s, d2s, d3s]):
+            st.info("Please fill all three dial readings for each load (you can use '.' or ',').")
+            st.stop()
+        d1f, d2f, d3f = _to_float(d1s), _to_float(d2s), _to_float(d3s)
+        p_val = float(PRESSURE_LIBRARY[plate][L])
+        rows.append([L, p_val, d1f, d2f, d3f])
+
+# =========================
+# Paste 6x3
+# =========================
 elif method == "Paste 6x3 dials":
-
-    pasted = st.text_area("Paste 6×3 table", height=160,
+    pasted = st.text_area("Paste 6x3 table", height=160,
                           placeholder="e.g.\n25.00 25.00 25.00\n24.00 24.00 23.56\n...")
     if st.button("Submit"):
         dmap = parse_dials_from_text(pasted)
         if not dmap:
-            st.error("Could not parse 6×3 numbers.")
+            st.error("Could not parse 6x3 numbers.")
             st.stop()
         for L in LOAD_STEPS:
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
     else:
         st.stop()
 
-else:  # Photo OCR (beta)
+# =========================
+# OCR
+# =========================
+else:
     upl = st.file_uploader("Upload photo", type=["png", "jpg", "jpeg", "webp"])
     if not upl:
         st.info("Upload a clear photo of the dial readings.")
@@ -452,14 +444,16 @@ else:  # Photo OCR (beta)
     if st.button("Submit OCR Data"):
         dmap = parse_dials_from_text(st.session_state["ocr_text"])
         if not dmap:
-            st.error("❌ Couldn’t parse 6×3 readings.")
+            st.error("Couldn't parse 6x3 readings.")
             st.stop()
         for L in LOAD_STEPS:
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
     else:
         st.stop()
 
-# ---------------- DataFrame ----------------
+# =========================
+# Build DataFrame
+# =========================
 if not rows:
     st.stop()
 
@@ -472,10 +466,10 @@ df["Avg Dial (mm)"] = df[["Dial 1 (mm)", "Dial 2 (mm)", "Dial 3 (mm)"]].mean(axi
 avg0 = df.loc[df["Load (kN)"] == 0, "Avg Dial (mm)"].iloc[0]
 df["Settlement (mm)"] = avg0 - df["Avg Dial (mm)"]
 
-# ---------------- Calculations ----------------
-bp125, p1a, p1b, m, b = interp_bp_at_1p25(
-    df["Settlement (mm)"], df[f"Bearing Pressure ({PRESSURE_UNITS})"]
-)
+# =========================
+# Calculations
+# =========================
+bp125, p1a, p1b, m, b = interp_bp_at_1p25(df["Settlement (mm)"], df[f"Bearing Pressure ({PRESSURE_UNITS})"])
 if bp125 is None:
     st.warning("1.25 mm outside range. Ensure 1.25 mm is bracketed by your readings.")
     st.stop()
@@ -483,28 +477,27 @@ if bp125 is None:
 kint = k762(bp125, cf)
 cbr_pct = round(cbr_from_k(kint), 1)
 
-# ---------------- Results banner ----------------
+# =========================
+# Results & Plot
+# =========================
 render_cbr_banner(cbr_pct, layer)
 
-# Compact numeric summary + max settlement display
 max_settlement = df["Settlement (mm)"].max()
-
 st.write(
-    f"**BP@1.25mm (interpolated):** {bp125:.2f} {PRESSURE_UNITS}  "
-    f"**k₇₆₂:** {kint:,}  **CF:** {cf:.3f}  **Plate:** {plate} mm  "
+    f"**BP@1.25mm (interpolated):** {bp125:.2f} {PRESSURE_UNITS}    "
+    f"**k762:** {kint:,}    **CF:** {cf:.3f}    **Plate:** {plate} mm    "
     f"**Max Settlement:** {max_settlement:.2f} mm"
 )
 
-# ---------------- Plot (right under banner) ----------------
 fig = pretty_cbr_plot(
-    df["Settlement (mm)"],
-    df[f"Bearing Pressure ({PRESSURE_UNITS})"],
-    bp125=bp125,
-    compact=mobile,
+    df["Settlement (mm)"], df[f"Bearing Pressure ({PRESSURE_UNITS})"],
+    bp125=bp125, compact=mobile,
 )
 st.plotly_chart(fig, use_container_width=True, key="cbr_main_plot")
 
-# ---------------- Tables ----------------
+# =========================
+# Tables
+# =========================
 def format_df(df_in, decimals=2):
     df2 = df_in.copy()
     for col in df2.select_dtypes(include=["float", "float64", "int"]):
@@ -515,17 +508,15 @@ bp_map = pd.DataFrame({
     "Load (kN)": LOAD_STEPS,
     f"Bearing Pressure ({PRESSURE_UNITS})": [PRESSURE_LIBRARY[plate][L] for L in LOAD_STEPS],
 })
-with st.expander("Load → Bearing Pressure used", expanded=False):
+with st.expander("Load -> Bearing Pressure used", expanded=False):
     st.dataframe(format_df(bp_map), use_container_width=True, height=260)
 
-# Readings table (keep OPEN)
 with st.expander("Readings table", expanded=True):
     st.dataframe(
         format_df(df[["Load (kN)", "Avg Dial (mm)", "Settlement (mm)", f"Bearing Pressure ({PRESSURE_UNITS})"]]),
         use_container_width=True, height=280
     )
 
-# Points used for interpolation
 df_sorted = df.sort_values("Settlement (mm)")
 lower = df_sorted[df_sorted["Settlement (mm)"] <= 1.25].tail(1)
 upper = df_sorted[df_sorted["Settlement (mm)"] >= 1.25].head(1)
