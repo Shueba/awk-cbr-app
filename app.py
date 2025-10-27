@@ -181,6 +181,44 @@ PRESSURE_LIBRARY = {
 }
 
 # ---------------- Helpers ----------------
+import streamlit.components.v1 as components
+
+def ios_number_input(label: str, key: str, value: str = "") -> str:
+    """A plain input field that opens the native iPhone numeric keypad."""
+    html = f"""
+    <div style="font-family:-apple-system,system-ui;margin-bottom:6px;">
+      <label style="font-weight:600;">{label}</label>
+      <input
+        type="text"
+        id="{key}"
+        name="{key}"
+        value="{value}"
+        placeholder="0.00"
+        inputmode="decimal"
+        pattern="[0-9]*"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        style="
+          font-size:16px;
+          padding:10px 12px;
+          border:2px solid #e6e6e6;
+          border-radius:10px;
+          width:100%;
+          background:#fafafa;
+        ">
+      <script>
+        const el = document.getElementById("{key}");
+        el.addEventListener("input", () => {{
+            if (window.Streamlit) Streamlit.setComponentValue(el.value);
+        }});
+      </script>
+    </div>
+    """
+    return components.html(html, height=70, key=key, include_streamlit_js=True)
+
+
+
 def parse_dials_from_text(text: str):
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     rows = []
@@ -298,51 +336,6 @@ def dial_text(label: str, key: str, placeholder: str = " "):
 
 import json, streamlit as st, streamlit.components.v1 as components
 
-def ios_decimal_input(label: str, key: str, initial: str = "") -> str:
-    # Show native iOS decimal keypad using inputmode="decimal"
-    initial = "" if initial in (None, "None") else str(initial)
-    html = f"""
-    <div style="font-family:-apple-system,system-ui">
-      <label style="font-weight:600;display:block;margin:2px 0">{label}</label>
-      <input id="x" type="text" placeholder="0.00"
-             inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false"
-             style="font-size:16px;padding:10px;border:2px solid #e6e6e6;border-radius:10px;width:100%;background:#fafafa">
-      <script>
-        const start = {json.dumps(initial)};
-        const el = document.getElementById("x");
-        function send(v) {{
-          if (window.Streamlit && window.Streamlit.setComponentValue) {{
-            window.Streamlit.setComponentValue(v);
-          }}
-        }}
-        function norm(v) {{
-          // Allow digits, comma, dot, leading minus; collapse multiple commas/dots to one
-          v = (v||"").replace(/[^0-9,\\.-]/g,"");
-          // convert comma to dot so Python can parse later
-          v = v.replace(",", ".");
-          // keep only one dot
-          const i = v.indexOf(".");
-          if (i !== -1) v = v.slice(0, i+1) + v.slice(i+1).replace(/\\./g,"");
-          // only one leading minus
-          if (v.lastIndexOf("-") > 0) v = v.replace(/-/g,"");
-          return v;
-        }}
-        el.value = norm(start);
-        let t;
-        el.addEventListener("input", () => {{
-          el.value = norm(el.value);
-          clearTimeout(t);
-          t = setTimeout(() => send(el.value), 120); // debounce a bit
-        }});
-        // send initial value too
-        send(el.value);
-      </script>
-    </div>
-    """
-    val = components.html(html, height=80, key=key, include_streamlit_js=True)
-    return val if val is not None else initial
-
-
 # ---------------- Formatting Helper ----------------
 def format_df(df, decimals=2):
     """Round numeric columns and format floats to N decimal places."""
@@ -440,66 +433,37 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # ---------------- Manual entry (text inputs + iPhone numeric keypad) ----------------
+# ---------------- Manual entry (iPhone keypad) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # Keep per-cell state (strings, so they can be blank)
     if "dials_state" not in st.session_state:
         st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
-    # Header
     head = st.columns([1, 1.3, 1.3, 1.3])
     head[0].markdown("**Load (kN)**")
     head[1].markdown("**Dial 1 (mm)**")
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
 
-    # Grid (plain text inputs → no steppers, no forced 0.00)
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
 
-        v1 = c1.text_input("", value=st.session_state["dials_state"][L][0],
-                           key=f"dial_{L}_1", placeholder="e.g. 23.56")
-        v2 = c2.text_input("", value=st.session_state["dials_state"][L][1],
-                           key=f"dial_{L}_2", placeholder="e.g. 24.50")
-        v3 = c3.text_input("", value=st.session_state["dials_state"][L][2],
-                           key=f"dial_{L}_3", placeholder="e.g. 25.00")
+        v1 = ios_number_input("Dial 1 (mm)", f"ios_{L}_1", st.session_state["dials_state"][L][0])
+        v2 = ios_number_input("Dial 2 (mm)", f"ios_{L}_2", st.session_state["dials_state"][L][1])
+        v3 = ios_number_input("Dial 3 (mm)", f"ios_{L}_3", st.session_state["dials_state"][L][2])
 
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
-    # 👉 Force iPhone to show the native numeric keypad for these text inputs
-    #    by setting inputmode="decimal" (and friendly hints) via a tiny JS snippet.
-    components.html(
-        """
-        <script>
-        // Target only our dial textboxes by their placeholders
-        const sels = [
-          'input[placeholder="e.g. 23.56"]',
-          'input[placeholder="e.g. 24.50"]',
-          'input[placeholder="e.g. 25.00"]'
-        ];
-        const nodes = document.querySelectorAll(sels.join(','));
-        nodes.forEach(el => {
-          el.setAttribute('inputmode', 'decimal');   // iOS numeric keypad
-          el.setAttribute('autocomplete', 'off');
-          el.setAttribute('autocorrect', 'off');
-          el.setAttribute('spellcheck', 'false');
-          el.setAttribute('enterkeyhint', 'done');
-        });
-        </script>
-        """,
-        height=0
-    )
-
-    # Parse after editing (accepts "23.56" or "23,56")
+    # Convert to floats
     def _to_float(s):
         s = (s or "").strip()
         if s in ("", "-", ".", "-.", "None", "nan"):
             return None
         try:
             return float(s.replace(",", "."))
-        except Exception:
+        except:
             return None
 
     rows = []
@@ -507,6 +471,12 @@ if method == "Manual entry":
         d1s, d2s, d3s = st.session_state["dials_state"][L]
         d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
         p_val = float(PRESSURE_LIBRARY[plate][L])
+        rows.append([L, p_val, d1, d2, d3])
+
+    if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
+        st.info("Please fill **all three dial readings** for each load.")
+        st.stop()
+
 
 
 
