@@ -576,7 +576,7 @@ if not lower.empty and not upper.empty:
     bracket.insert(0, "Role", ["Before 1.25 mm", "After 1.25 mm"])
     with st.expander("Points used for interpolation at 1.25 mm", expanded=True):
         st.dataframe(format_df(bracket), use_container_width=True, height=200)```
-eof
+    eof
 
 I replaced the problematic expression in `ios_number_input` (line 188) with a simpler f-string literal for the JavaScript variable:
 
