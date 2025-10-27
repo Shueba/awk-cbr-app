@@ -432,29 +432,33 @@ rows = []
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ---------------- Manual entry (text inputs + iPhone numeric keypad) ----------------
 import streamlit as st
 
-# ---- Hide Streamlit number steppers & duplicate labels (works on mobile & desktop) ----
+# ---------- CSS: remove +/– steppers completely ----------
 st.markdown("""
 <style>
-/* hide +/- stepper buttons */
+/* hide increment/decrement arrows and Streamlit's stepper UI */
 [data-testid="stNumberInput"] button[aria-label="Increment"],
-[data-testid="stNumberInput"] button[aria-label="Decrement"] { display:none !important; }
-/* remove the small inline label above each number box */
-[data-testid="stNumberInput"] label { display:none !important; }
-/* tighten input height a bit */
-[data-testid="stNumberInput"] input { padding: 10px 12px !important; }
+[data-testid="stNumberInput"] button[aria-label="Decrement"] {display: none !important;}
+[data-testid="stNumberInput"] label {display: none !important;}
+[data-testid="stNumberInput"] input {
+    padding: 10px 12px !important;
+    text-align: left !important;
+}
+/* optional: placeholder styling */
+[data-testid="stNumberInput"] input::placeholder {
+    color: #bbb;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Manual entry (native iPhone keypad; no +/- UI) ----------------
+# ---------- Manual entry table ----------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # keep floats or None
     if "dials_state" not in st.session_state:
-        st.session_state["dials_state"] = {L: [None, None, None] for L in LOAD_STEPS}
+        # store as text so it can start blank
+        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
     head = st.columns([1, 1.3, 1.3, 1.3])
     head[0].markdown("**Load (kN)**")
@@ -462,35 +466,52 @@ if method == "Manual entry":
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
 
-    def num_cell(col, key, initial):
-        # number_input => iPhone shows numeric keypad
-        v = col.number_input(
-            "mm",  # hidden via CSS above
-            key=key,
-            value=0.00 if initial is None else float(initial),
-            step=0.01,
-            format="%.2f"
-        )
-        # treat untouched default 0.00 as empty if initial was None
-        return v if (initial is not None or v != 0.00) else None
-
-    rows = []
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
 
-        v1 = num_cell(c1, f"dial_{L}_1", st.session_state["dials_state"][L][0])
-        v2 = num_cell(c2, f"dial_{L}_2", st.session_state["dials_state"][L][1])
-        v3 = num_cell(c3, f"dial_{L}_3", st.session_state["dials_state"][L][2])
+        # --- use text_input but mark as numeric type for iPhone ---
+        v1 = c1.text_input("Dial 1 (mm)", value=st.session_state["dials_state"][L][0],
+                           key=f"d1_{L}", placeholder="e.g. 23.56")
+        v2 = c2.text_input("Dial 2 (mm)", value=st.session_state["dials_state"][L][1],
+                           key=f"d2_{L}", placeholder="e.g. 24.56")
+        v3 = c3.text_input("Dial 3 (mm)", value=st.session_state["dials_state"][L][2],
+                           key=f"d3_{L}", placeholder="e.g. 25.00")
 
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
-        p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, v1, v2, v3])
+    # ---------- Inject JS once to make iPhone show numeric keypad ----------
+    st.components.v1.html("""
+    <script>
+    // Find all Streamlit text inputs and change to numeric for iPhone keypad
+    document.querySelectorAll('input[type="text"]').forEach(el=>{
+        el.setAttribute('inputmode','decimal');
+        el.setAttribute('autocomplete','off');
+        el.setAttribute('autocorrect','off');
+        el.setAttribute('spellcheck','false');
+    });
+    </script>
+    """, height=0)
 
-    # require all filled
+    # ---------- Convert text to floats ----------
+    def _to_float(s):
+        s = (s or "").strip()
+        if s in ("", "-", ".", "-.", "None", "nan"):
+            return None
+        try:
+            return float(s.replace(",", "."))
+        except:
+            return None
+
+    rows = []
+    for L in LOAD_STEPS:
+        d1s, d2s, d3s = st.session_state["dials_state"][L]
+        d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
+        p_val = float(PRESSURE_LIBRARY[plate][L])
+        rows.append([L, p_val, d1, d2, d3])
+
     if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
-        st.info("Please fill **all** three dial readings for each load.")
+        st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
         st.stop()
 
 
