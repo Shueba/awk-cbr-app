@@ -439,16 +439,25 @@ if method == "Manual entry":
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
 
+   # ... around line 440 ...
+    
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
 
-        # --- use text_input but mark as numeric type for iPhone ---
-              # AFTER – shows native number keypad on iPhone
-        d1 = ios_number_input("Dial 1 (mm)", key=f"d1_{L}", allow_decimal=True)
-        d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True)
-        d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True)
-        ]
+        # --- Use the columns to place the inputs ---
+        with c1:
+            d1 = ios_number_input("Dial 1 (mm)", key=f"d1_{L}", allow_decimal=True)
+        with c2:
+            d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True)
+        with c3:
+            d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True)
+
+        # STORE THE VALUES BACK TO SESSION STATE
+        st.session_state["dials_state"][L] = [d1, d2, d3]
+
+    # ... rest of the code continues below ...
+    
 
     # ---------- Convert text to floats ----------
    def as_float(x: str) -> float:
