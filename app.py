@@ -159,48 +159,67 @@ def _to_float(x) -> float:
 
 def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool = True, placeholder: str = "") -> str:
     """
-    Streamlit text_input that forces iPhone numeric keypad by setting inputmode on THIS field (top-level DOM).
-    Returns a cleaned string. Keep label UNIQUE per widget to avoid ambiguity.
+    Streamlit text_input that forces iPhone's numeric keypad.
+    Uses type="tel" + inputmode and re-applies after rerenders.
+    Keep label UNIQUE per widget.
     """
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
-    input_mode = 'decimal' if allow_decimal else 'numeric'
-    _html(f"""
+    # Build the JS once per field
+    js = f"""
 <script>
 (function(){{
+  // one global observer to re-apply patches on Streamlit rerenders
+  if(!window._awk_obs){{
+    window._awk_patchers = [];
+    window._awk_obs = new MutationObserver(function(){{
+      window._awk_patchers.forEach(fn => fn());
+    }});
+    window._awk_obs.observe(document.body, {{ childList: true, subtree: true }});
+  }}
+
   const wanted = {label!r};
-  function patchOne() {{
-    const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
-    const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
-    if (!el) return false;
-    try {{ el.type = 'text'; }} catch(e) {{}}
-    el.setAttribute('inputmode', '{input_mode}');
+  const allowDecimal = {str(allow_decimal).lower()};
+
+  function patchThisField(){{
+    // locate this input by its aria-label (Streamlit sets it from the label)
+    const el = Array.from(document.querySelectorAll('input[aria-label]'))
+      .find(i => (i.getAttribute('aria-label') || '') === wanted);
+    if(!el) return;
+
+    // Force iOS keypad: type=tel + inputmode (iOS respects at least one of these)
+    try {{ el.type = 'tel'; }} catch(e) {{}}
+    el.setAttribute('inputmode', allowDecimal ? 'decimal' : 'numeric');
+    el.setAttribute('autocapitalize','off');
     el.setAttribute('autocomplete','off');
     el.setAttribute('autocorrect','off');
     el.setAttribute('spellcheck','false');
     el.setAttribute('enterkeyhint','done');
-    el.setAttribute('pattern', '[0-9]*');
-    if (!el._awk_patched) {{
-      el.addEventListener('input', () => {{
+    el.setAttribute('pattern','[0-9]*');
+
+    // Live sanitise value
+    if(!el._awk_patched){{
+      el.addEventListener('input', function(){{
         let v = el.value || "";
         v = v.replace(/[^0-9.]/g, "");
-        {"v = v.replace(/[.]/g, '');" if not allow_decimal else ""}
+        if(!allowDecimal) v = v.replace(/[.]/g, "");
         const p = v.indexOf(".");
-        if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
+        if(p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
         el.value = v;
       }});
       el._awk_patched = true;
     }}
-    return true;
   }}
-  if (!patchOne()) {{
-    setTimeout(patchOne, 0);
-    setTimeout(patchOne, 50);
-    setTimeout(patchOne, 150);
-  }}
+
+  // register this field's patcher and run it now and shortly after
+  window._awk_patchers.push(patchThisField);
+  patchThisField();
+  setTimeout(patchThisField, 0);
+  setTimeout(patchThisField, 120);
 }})();
 </script>
-""")
+"""
+    _html(js)  # uses st.html if available; otherwise components.html fallback
 
     # Python-side safety net
     s = (s or "").replace(",", ".")
