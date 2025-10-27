@@ -86,50 +86,6 @@ h2 { text-align:center; letter-spacing:.3px; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ---------- iPhone decimal keypad: hard-force ----------
-def force_decimal_keypad():
-    """Force iOS Safari to show the decimal keypad on Dial/(mm) inputs."""
-    components.html(
-        """
-        <script>
-        (function () {
-          function match(el){
-            const a = (el.getAttribute('aria-label') || '').toLowerCase();
-            return a.includes('dial') || a.includes('(mm)');
-          }
-          function patchInputs() {
-            const inputs = document.querySelectorAll('input');
-            inputs.forEach(el => {
-              if (!match(el)) return;
-              try { el.type = 'text'; } catch(e) {}
-              el.setAttribute('inputmode','decimal');
-              el.setAttribute('pattern','[0-9]+([.,][0-9]+)?');
-              el.setAttribute('enterkeyhint','done');
-              el.setAttribute('autocapitalize','off');
-              el.setAttribute('autocorrect','off');
-              el.setAttribute('autocomplete','off');
-              el.oninput = function(){
-                const v = el.value;
-                const cleaned = v.replace(/[^0-9.,-]/g,'')
-                                 .replace(/(?!^)-/g,'')        // single leading minus
-                                 .replace(/([.,])(?=.*[.,])/,'$1'); // keep first sep
-                if (v !== cleaned) el.value = cleaned;
-              };
-            });
-          }
-          patchInputs();
-          const mo = new MutationObserver(patchInputs);
-          mo.observe(document.documentElement, { childList: true, subtree: true });
-          window.addEventListener('load', patchInputs, { once:true });
-          document.addEventListener('DOMContentLoaded', patchInputs, { once:true });
-          setInterval(patchInputs, 800);
-        })();
-        </script>
-        """,
-        height=0,
-    )
-
 # ---------------- Logo ----------------
 def render_logo(max_width=350):
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -181,6 +137,7 @@ PRESSURE_LIBRARY = {
 }
 
 # ---------------- Helpers ----------------
+# ---------------- Helpers ----------------
 import re
 import streamlit as st
 
@@ -192,43 +149,45 @@ def ios_number_input(
     placeholder: str = ""
 ) -> str:
     """
-    A Streamlit text_input that forces iPhone's numeric keypad (via inputmode)
-    and restricts input to digits (+ optional one dot). Returns a cleaned string.
+    A Streamlit text_input that forces iPhone's decimal keypad (via inputmode)
+    and restricts input. Returns a cleaned string.
     """
     # 1) Render a normal Streamlit text_input so state/keys work as usual
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
     # 2) Inject small JS to set inputmode on THIS specific field (matched by aria-label)
-    #    This keeps it all inside Streamlit (no custom component needed).
+    #    This ensures the decimal keypad appears on iOS and Android.
+    input_mode = 'decimal' if allow_decimal else 'numeric'
+    
     st.html(f"""
     <script>
       const wanted = {label!r};
-      // find the input by its aria-label (Streamlit sets this to the label text)
+      // Find the input by its aria-label (Streamlit sets this to the label text)
       const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
       const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
       if (el) {{
-        el.setAttribute('inputmode', '{'decimal' if allow_decimal else 'numeric'}');
-        el.setAttribute('pattern', '[0-9]*');
-        el.setAttribute('enterkeyhint', 'done');
-        // optional: live-filter to digits + one dot (if allow_decimal)
-        el.addEventListener('input', () => {{
-          let v = el.value || "";
-          v = v.replace(/[^0-9.]/g, "");
-          if (!{str(allow_decimal).lower()}) v = v.replace(/[.]/g, "");
-          const first = v.indexOf(".");
-          if (first !== -1) v = v.slice(0, first+1) + v.slice(first+1).replace(/[.]/g, "");
-          el.value = v;  // keep it clean while typing
-        }});
+        // Set the attributes to force the decimal keypad
+        el.setAttribute('inputmode', '{input_mode}');
+        el.setAttribute('autocomplete','off');
+        el.setAttribute('autocorrect','off');
+        el.setAttribute('spellcheck','false');
+        // pattern is often ignored by type="text", but may help with validation
+        el.setAttribute('pattern', '[0-9]*'); 
       }}
     </script>
     """, height=0)
 
-    # 3) Clean on the Python side too (safety net)
-    s = re.sub(r"[^0-9.]", "", s or "")
+    # 3) Clean on the Python side (safety net and final value)
+    # Allow numbers, one dot, and optionally a leading minus (though the keys won't provide it)
+    s = s.replace(",", ".") # Accept common locale separator
+    s = re.sub(r"[^0-9.]", "", s or "") # Only allow digits and dot
+    
     if not allow_decimal:
         s = s.replace(".", "")
+    # Remove extra dots
     if s.count(".") > 1:
         i = s.find("."); s = s[:i+1] + s[i+1:].replace(".", "")
+        
     return s
 
 
@@ -490,19 +449,6 @@ if method == "Manual entry":
         d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True)
         d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True)
         ]
-
-    # ---------- Inject JS once to make iPhone show numeric keypad ----------
-    st.components.v1.html("""
-    <script>
-    // Find all Streamlit text inputs and change to numeric for iPhone keypad
-    document.querySelectorAll('input[type="text"]').forEach(el=>{
-        el.setAttribute('inputmode','decimal');
-        el.setAttribute('autocomplete','off');
-        el.setAttribute('autocorrect','off');
-        el.setAttribute('spellcheck','false');
-    });
-    </script>
-    """, height=0)
 
     # ---------- Convert text to floats ----------
    def as_float(x: str) -> float:
