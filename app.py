@@ -378,45 +378,45 @@ with colD:
 method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
 rows = []
 
-# ---------- Manual entry table ----------
-if method == "Manual entry":
-    st.markdown("#### Dial gauge inputs (mm)")
+st.html("""
+<script>
+(function () {
+  function patch() {
+    const inputs = document.querySelectorAll('input[aria-label]');
+    inputs.forEach(el => {
+      const a = (el.getAttribute('aria-label') || '').toLowerCase();
+      // target your dial fields; adjust if you rename labels
+      if (a.includes('dial') || a.includes('(mm)')) {
+        // ensure it's a plain text field, not type=number
+        try { el.type = 'text'; } catch(e) {}
+        el.setAttribute('inputmode', 'decimal');   // 'numeric' if you want integers only
+        el.setAttribute('pattern', '[0-9]*');
+        el.setAttribute('enterkeyhint', 'done');
+        el.setAttribute('autocomplete','off');
+        el.setAttribute('autocorrect','off');
+        el.setAttribute('spellcheck','false');
 
-    if "dials_state" not in st.session_state:
-        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
+        // live sanitise to digits + at most one dot
+        if (!el._awk_patched) {
+          el.addEventListener('input', () => {
+            let v = el.value || "";
+            v = v.replace(/[^0-9.]/g, "");
+            const p = v.indexOf(".");
+            if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
+            el.value = v;
+          });
+          el._awk_patched = true;
+        }
+      }
+    });
+  }
+  // run now and on future rerenders
+  patch();
+  new MutationObserver(patch).observe(document.body, {childList:true, subtree:true});
+})();
+</script>
+""", height=0)
 
-    head = st.columns([1, 1.3, 1.3, 1.3])
-    head[0].markdown("**Load (kN)**")
-    head[1].markdown("**Dial 1 (mm)**")
-    head[2].markdown("**Dial 2 (mm)**")
-    head[3].markdown("**Dial 3 (mm)**")
-
-    for L in LOAD_STEPS:
-        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
-        c0.write(f"{L:.0f}")
-
-        # IMPORTANT: unique labels per row so iOS keypad applies to each field
-        with c1:
-            d1 = ios_number_input(f"Dial 1 (mm) – {L} kN", key=f"d1_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][0])
-        with c2:
-            d2 = ios_number_input(f"Dial 2 (mm) – {L} kN", key=f"d2_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][1])
-        with c3:
-            d3 = ios_number_input(f"Dial 3 (mm) – {L} kN", key=f"d3_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][2])
-
-        st.session_state["dials_state"][L] = [d1, d2, d3]
-
-    # Build rows (require all three values present for every load)
-    for L in LOAD_STEPS:
-        d1s, d2s, d3s = st.session_state["dials_state"][L]
-        if any((v is None or v.strip() == "") for v in [d1s, d2s, d3s]):
-            st.info("Please fill **all** three dial readings for each load (`.` or `,` both OK).")
-            st.stop()
-        d1f, d2f, d3f = _to_float(d1s), _to_float(d2s), _to_float(d3s)
-        p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, d1f, d2f, d3f])
 
 elif method == "Paste 6×3 dials":
     pasted = st.text_area("Paste 6×3 table", height=160,
