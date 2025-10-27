@@ -296,6 +296,53 @@ def dial_text(label: str, key: str, placeholder: str = " "):
     except ValueError:
         return None
 
+import json, streamlit as st, streamlit.components.v1 as components
+
+def ios_decimal_input(label: str, key: str, initial: str = "") -> str:
+    # Show native iOS decimal keypad using inputmode="decimal"
+    initial = "" if initial in (None, "None") else str(initial)
+    html = f"""
+    <div style="font-family:-apple-system,system-ui">
+      <label style="font-weight:600;display:block;margin:2px 0">{label}</label>
+      <input id="x" type="text" placeholder="0.00"
+             inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false"
+             style="font-size:16px;padding:10px;border:2px solid #e6e6e6;border-radius:10px;width:100%;background:#fafafa">
+      <script>
+        const start = {json.dumps(initial)};
+        const el = document.getElementById("x");
+        function send(v) {{
+          if (window.Streamlit && window.Streamlit.setComponentValue) {{
+            window.Streamlit.setComponentValue(v);
+          }}
+        }}
+        function norm(v) {{
+          // Allow digits, comma, dot, leading minus; collapse multiple commas/dots to one
+          v = (v||"").replace(/[^0-9,\\.-]/g,"");
+          // convert comma to dot so Python can parse later
+          v = v.replace(",", ".");
+          // keep only one dot
+          const i = v.indexOf(".");
+          if (i !== -1) v = v.slice(0, i+1) + v.slice(i+1).replace(/\\./g,"");
+          // only one leading minus
+          if (v.lastIndexOf("-") > 0) v = v.replace(/-/g,"");
+          return v;
+        }}
+        el.value = norm(start);
+        let t;
+        el.addEventListener("input", () => {{
+          el.value = norm(el.value);
+          clearTimeout(t);
+          t = setTimeout(() => send(el.value), 120); // debounce a bit
+        }});
+        // send initial value too
+        send(el.value);
+      </script>
+    </div>
+    """
+    val = components.html(html, height=80, key=key, include_streamlit_js=True)
+    return val if val is not None else initial
+
+
 # ---------------- Formatting Helper ----------------
 def format_df(df, decimals=2):
     """Round numeric columns and format floats to N decimal places."""
