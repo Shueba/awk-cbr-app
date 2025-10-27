@@ -426,24 +426,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------- Manual entry table ----------
+# ... (lines leading up to the function)
+
+# ---------- Manual entry table ----------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    if "dials_state" not in st.session_state:
-        # store as text so it can start blank
-        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
+    # ... (code for session state init and column headers)
 
-    head = st.columns([1, 1.3, 1.3, 1.3])
-    head[0].markdown("**Load (kN)**")
-    head[1].markdown("**Dial 1 (mm)**")
-    head[2].markdown("**Dial 2 (mm)**")
-    head[3].markdown("**Dial 3 (mm)**")
-
-   # ... around line 440 ...
-    
+    # row inputs
     for L in LOAD_STEPS:
-        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
-        c0.write(f"{L:.0f}")
+        # ... (code for columns and ios_number_input calls)
+
+        # STORE THE VALUES BACK TO SESSION STATE
+        st.session_state["dials_state"][L] = [d1, d2, d3] # Ensure this is indented correctly
+
+    # ----------------------------------------------------
+    # Line 463 (def as_float) should be indented like this:
+    # ----------------------------------------------------
+    def as_float(x: str) -> float:
+        try: return float(x) if x not in ("", ".") else 0.0
+        except: return 0.0
+
+    # build rows for dataframe/calcs
+    rows = []
+    for L in LOAD_STEPS:
+        d1s, d2s, d3s = st.session_state["dials_state"][L]
+        # ... rest of the logic ...
 
         # --- Use the columns to place the inputs ---
         with c1:
