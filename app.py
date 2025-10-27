@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 # =========================
 # App & environment
 # =========================
-st.set_page_config(page_title="AWK – Equivalent In-Situ CBR", layout="centered")
+st.set_page_config(page_title="AWK - Equivalent In-Situ CBR", layout="centered")
 
 def set_tesseract_path():
     if platform.system().lower().startswith("win"):
@@ -22,11 +22,18 @@ def set_tesseract_path():
 set_tesseract_path()
 
 # =========================
-# HTML injector (must use st.html, not iframe)
+# HTML injector (top-level preferred; fallback to iframe)
 # =========================
-def _html(snippet: str, height: int = 0):
-    assert hasattr(st, "html"), "st.html not available. Please upgrade Streamlit."
-    st.html(snippet, height=height)
+def _html(snippet: str):
+    # Prefer top-level st.html so JS can reach Streamlit widgets
+    if hasattr(st, "html"):
+        try:
+            st.html(snippet)  # no height kwarg for max compatibility
+            return
+        except TypeError:
+            pass
+    # Fallback (iframe) - JS may not reach Streamlit inputs, but app won't crash
+    components.html(snippet, height=0, scrolling=False)
 
 # =========================
 # Password protection
@@ -130,7 +137,7 @@ render_logo()
 # =========================
 CF_DEFAULTS = {300: 0.442, 455: 0.629, 610: 0.816}
 LOAD_STEPS = [0, 10, 20, 30, 40, 50]
-PRESSURE_UNITS = "kN/m^2"   # ASCII only
+PRESSURE_UNITS = "kN/m^2"  # ASCII only
 PRESSURE_LIBRARY = {
     300: {0: 0.00, 10: 145.97, 20: 288.01, 30: 435.70, 40: 577.17, 50: 718.64},
     455: {0: 0.00, 10:  64.32, 20: 126.07, 30: 190.27, 40: 251.78, 50: 313.28},
@@ -159,42 +166,41 @@ def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool 
 
     input_mode = 'decimal' if allow_decimal else 'numeric'
     _html(f"""
-    <script>
-      (function(){{
-        const wanted = {label!r};
-        function patchOne() {{
-          const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
-          const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
-          if (!el) return false;
-          try {{ el.type = 'text'; }} catch(e) {{ }}
-          el.setAttribute('inputmode', '{input_mode}');
-          el.setAttribute('autocomplete','off');
-          el.setAttribute('autocorrect','off');
-          el.setAttribute('spellcheck','false');
-          el.setAttribute('enterkeyhint','done');
-          el.setAttribute('pattern', '[0-9]*');
-          if (!el._awk_patched) {{
-            el.addEventListener('input', () => {{
-              let v = el.value || "";
-              v = v.replace(/[^0-9.]/g, "");
-              {"v = v.replace(/[.]/g, '');" if not allow_decimal else ""}
-              const p = v.indexOf(".");
-              if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
-              el.value = v;
-            }});
-            el._awk_patched = true;
-          }}
-          return true;
-        }}
-        // try now; if not found yet, retry shortly (streamlit render timing)
-        if (!patchOne()) {{
-          setTimeout(patchOne, 0);
-          setTimeout(patchOne, 50);
-          setTimeout(patchOne, 150);
-        }}
-      }})();
-    </script>
-    """, height=0)
+<script>
+(function(){{
+  const wanted = {label!r};
+  function patchOne() {{
+    const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
+    const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
+    if (!el) return false;
+    try {{ el.type = 'text'; }} catch(e) {{}}
+    el.setAttribute('inputmode', '{input_mode}');
+    el.setAttribute('autocomplete','off');
+    el.setAttribute('autocorrect','off');
+    el.setAttribute('spellcheck','false');
+    el.setAttribute('enterkeyhint','done');
+    el.setAttribute('pattern', '[0-9]*');
+    if (!el._awk_patched) {{
+      el.addEventListener('input', () => {{
+        let v = el.value || "";
+        v = v.replace(/[^0-9.]/g, "");
+        {"v = v.replace(/[.]/g, '');" if not allow_decimal else ""}
+        const p = v.indexOf(".");
+        if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
+        el.value = v;
+      }});
+      el._awk_patched = true;
+    }}
+    return true;
+  }}
+  if (!patchOne()) {{
+    setTimeout(patchOne, 0);
+    setTimeout(patchOne, 50);
+    setTimeout(patchOne, 150);
+  }}
+}})();
+</script>
+""")
 
     # Python-side safety net
     s = (s or "").replace(",", ".")
@@ -345,9 +351,9 @@ def cbr_from_k(kint):
     return 6.1e-8 * (float(kint) ** 1.733)
 
 # =========================
-# UI – Controls
+# UI - Controls
 # =========================
-st.markdown("<h2>AWK – Equivalent In-Situ CBR</h2>", unsafe_allow_html=True)
+st.markdown("<h2>AWK - Equivalent In-Situ CBR</h2>", unsafe_allow_html=True)
 
 colA, colB = st.columns(2)
 with colA:
@@ -384,13 +390,13 @@ if method == "Manual entry":
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
         with c1:
-            d1 = ios_number_input(f"Dial 1 (mm) – {L} kN", key=f"d1_{L}",
+            d1 = ios_number_input(f"Dial 1 (mm) - {L} kN", key=f"d1_{L}",
                                   allow_decimal=True, value=st.session_state["dials_state"][L][0])
         with c2:
-            d2 = ios_number_input(f"Dial 2 (mm) – {L} kN", key=f"d2_{L}",
+            d2 = ios_number_input(f"Dial 2 (mm) - {L} kN", key=f"d2_{L}",
                                   allow_decimal=True, value=st.session_state["dials_state"][L][1])
         with c3:
-            d3 = ios_number_input(f"Dial 3 (mm) – {L} kN", key=f"d3_{L}",
+            d3 = ios_number_input(f"Dial 3 (mm) - {L} kN", key=f"d3_{L}",
                                   allow_decimal=True, value=st.session_state["dials_state"][L][2])
         st.session_state["dials_state"][L] = [d1, d2, d3]
 
