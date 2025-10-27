@@ -151,10 +151,14 @@ PRESSURE_LIBRARY = {
     610: {0: 0.00, 10:  36.43, 20:  71.08, 30: 106.51, 40: 140.73, 50: 174.95},
 }
 
-# ---------------- Helpers (Correctly placed and defined) ----------------
+# ---------------- Helpers ----------------
 import re
 import streamlit as st
 import json, streamlit.components.v1 as components
+
+# Initialize a list to track labels for JS injection
+if "ios_labels" not in st.session_state:
+    st.session_state["ios_labels"] = []
 
 def _to_float(x: str) -> float:
     """Safely converts a string (allowing '.' or ',') to a float, defaulting to 0.0."""
@@ -173,34 +177,18 @@ def ios_number_input(
     placeholder: str = ""
 ) -> str:
     """
-    A Streamlit text_input that forces iPhone's decimal keypad (via inputmode)
-    and restricts input. Returns a cleaned string.
+    Renders a Streamlit text_input. The necessary attributes for the iOS decimal
+    keypad are added *externally* via a single st.html call after the loop.
     """
-    # 1) Render a normal Streamlit text_input so state/keys work as usual
+    # 1. Store the label and mode for external JS injection
+    input_mode = 'decimal' if allow_decimal else 'numeric'
+    if (label, input_mode) not in st.session_state["ios_labels"]:
+        st.session_state["ios_labels"].append((label, input_mode))
+
+    # 2. Render a normal Streamlit text_input
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
-    # 2) Inject small JS to set inputmode on THIS specific field (matched by aria-label)
-    input_mode = 'decimal' if allow_decimal else 'numeric'
-    
-    # --- FIX for TypeError: Using simple string quoting for JS variable ---
-    st.html(f"""
-    <script>
-      const wanted = '{label}';
-      // Find the input by its aria-label (Streamlit sets this to the label text)
-      const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
-      const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
-      if (el) {{
-        // Set the attributes to force the decimal keypad
-        el.setAttribute('inputmode', '{input_mode}');
-        el.setAttribute('autocomplete','off');
-        el.setAttribute('autocorrect','off');
-        el.setAttribute('spellcheck','false');
-        el.setAttribute('pattern', '[0-9]*');
-      }}
-    </script>
-    """, height=0)
-
-    # 3) Clean on the Python side (safety net and final value)
+    # 3. Clean on the Python side (safety net and final value)
     s = s.replace(",", ".") # Accept common locale separator
     s = re.sub(r"[^0-9.]", "", s or "") # Only allow digits and dot
     
@@ -211,6 +199,29 @@ def ios_number_input(
         i = s.find("."); s = s[:i+1] + s[i+1:].replace(".", "")
         
     return s
+
+def inject_ios_keypad_script():
+    """Injects a single script block to modify all necessary input fields."""
+    js_logic = ""
+    for label, input_mode in st.session_state["ios_labels"]:
+        # Escape single quotes in the label for JS string safety
+        js_label = label.replace("'", "\\'")
+        js_logic += f"""
+        (function() {{
+            const wanted = '{js_label}';
+            const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
+            const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
+            if (el) {{
+                el.setAttribute('inputmode', '{input_mode}');
+                el.setAttribute('autocomplete','off');
+                el.setAttribute('autocorrect','off');
+                el.setAttribute('spellcheck','false');
+                el.setAttribute('pattern', '[0-9]*');
+            }}
+        }})();
+        """
+    if js_logic:
+        st.html(f"<script>{js_logic}</script>", height=0)
 
 
 def parse_dials_from_text(text: str):
@@ -414,7 +425,10 @@ with colD:
 method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
 rows = []
 
-# ---------- Manual entry table (Corrected) ----------
+# Clear the labels list for the current run
+st.session_state["ios_labels"] = []
+
+# ---------- Manual entry table (Refactored) ----------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
@@ -427,8 +441,6 @@ if method == "Manual entry":
     head[1].markdown("**Dial 1 (mm)**")
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
-
-    dials_data = {}
 
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
@@ -445,17 +457,18 @@ if method == "Manual entry":
         # Update session state with the current string values
         st.session_state["dials_state"][L] = [d1, d2, d3]
 
+    # --- INJECT SCRIPT HERE (Outside the loop, to avoid the TypeError) ---
+    inject_ios_keypad_script()
+
     # Process the data collected from the inputs
     for L in LOAD_STEPS:
         d1s, d2s, d3s = st.session_state["dials_state"][L]
         d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
         
         # Check if the user has provided non-empty, non-zero data for all three dials 
-        # for load steps above 0. (The 0 load step must have data, even if it's 0)
         is_valid = all(v is not None and str(v).strip() != "" for v in [d1s, d2s, d3s])
 
         if L > 0 and not is_valid:
-            # Check for non-zero/non-empty data only for non-zero load steps
             st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
             st.stop()
         
