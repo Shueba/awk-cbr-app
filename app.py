@@ -437,14 +437,13 @@ rows = []
 
 
 ## ---------------- Manual entry (stable grid; no disappearing values) ----------------
+# ---------------- Manual entry (stable grid; iPhone native keypad via inputmode) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # 1) Initialise once (each cell kept in session_state)
     if "dials_state" not in st.session_state:
         st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
-    # 2) Render a table-like grid of text inputs (no validation while typing)
     head = st.columns([1, 1.3, 1.3, 1.3])
     head[0].markdown("**Load (kN)**")
     head[1].markdown("**Dial 1 (mm)**")
@@ -454,20 +453,16 @@ if method == "Manual entry":
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
-        v1 = c1.text_input("", value=st.session_state["dials_state"][L][0],
-                           key=f"dial_{L}_1", placeholder="e.g. 23.56")
-        v2 = c2.text_input("", value=st.session_state["dials_state"][L][1],
-                           key=f"dial_{L}_2", placeholder="e.g. 24,50")
-        v3 = c3.text_input("", value=st.session_state["dials_state"][L][2],
-                           key=f"dial_{L}_3", placeholder="e.g. 25.00")
 
-        # keep latest edits
+        v1 = ios_decimal_input("Dial 1 (mm)", f"ios_{L}_1", st.session_state["dials_state"][L][0])
+        v2 = ios_decimal_input("Dial 2 (mm)", f"ios_{L}_2", st.session_state["dials_state"][L][1])
+        v3 = ios_decimal_input("Dial 3 (mm)", f"ios_{L}_3", st.session_state["dials_state"][L][2])
+
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
-    # 3) Parse AFTER editing (accepts 23.56 or 23,56)
     def _to_float(s):
         s = str(s).strip()
-        if s in ("", "-", "None", "nan"):
+        if s in ("", "-", "None", "nan", ".", "-."):
             return None
         try:
             return float(s.replace(",", "."))
@@ -481,10 +476,10 @@ if method == "Manual entry":
         p_val = float(PRESSURE_LIBRARY[plate][L])
         rows.append([L, p_val, d1, d2, d3])
 
-    # 4) Require all cells filled before continuing
     if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
-        st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
+        st.info("Please fill **all** three dial readings (`,` or `.` both OK on iPhone).")
         st.stop()
+
 
 
 
