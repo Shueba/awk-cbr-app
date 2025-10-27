@@ -417,8 +417,8 @@ st.html("""
 </script>
 """, height=0)
 
+elif method == "Paste 6x3 dials":
 
-elif method == "Paste 6×3 dials":
     pasted = st.text_area("Paste 6×3 table", height=160,
                           placeholder="e.g.\n25.00 25.00 25.00\n24.00 24.00 23.56\n...")
     if st.button("Submit"):
