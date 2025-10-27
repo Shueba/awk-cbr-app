@@ -372,7 +372,7 @@ method = st.radio("Input method", ["Manual entry", "Paste 6x3 dials", "Photo OCR
 rows = []
 
 # =========================
-# Manual Entry (iPhone keypad on every dial)
+# Manual entry with BUILT-IN KEYPAD (no iOS keyboard needed)
 # =========================
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
@@ -380,6 +380,7 @@ if method == "Manual entry":
     if "dials_state" not in st.session_state:
         st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
+    # Render labels + plain Streamlit text_inputs (we'll control them via our keypad)
     h0, h1, h2, h3 = st.columns([1, 1.3, 1.3, 1.3])
     h0.markdown("**Load (kN)**")
     h1.markdown("**Dial 1 (mm)**")
@@ -389,29 +390,172 @@ if method == "Manual entry":
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
+
+        # Unique, predictable labels so we can find them in the DOM
+        label1 = f"Dial 1 (mm) - {L} kN"
+        label2 = f"Dial 2 (mm) - {L} kN"
+        label3 = f"Dial 3 (mm) - {L} kN"
+
         with c1:
-            d1 = ios_number_input(f"Dial 1 (mm) - {L} kN", key=f"d1_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][0])
+            v1 = st.text_input(label1, value=st.session_state["dials_state"][L][0], key=f"d1_{L}", placeholder="")
         with c2:
-            d2 = ios_number_input(f"Dial 2 (mm) - {L} kN", key=f"d2_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][1])
+            v2 = st.text_input(label2, value=st.session_state["dials_state"][L][1], key=f"d2_{L}", placeholder="")
         with c3:
-            d3 = ios_number_input(f"Dial 3 (mm) - {L} kN", key=f"d3_{L}",
-                                  allow_decimal=True, value=st.session_state["dials_state"][L][2])
-        st.session_state["dials_state"][L] = [d1, d2, d3]
+            v3 = st.text_input(label3, value=st.session_state["dials_state"][L][2], key=f"d3_{L}", placeholder="")
+
+        st.session_state["dials_state"][L] = [v1, v2, v3]
+
+    # Install a custom on-screen keypad that writes into those inputs.
+    # It opens when any of the target inputs is tapped; the input stays focused but OS keyboard is prevented.
+    st.html("""
+<style>
+  .awk-keypad-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35);
+    display: none; align-items: flex-end; z-index: 99999;
+  }
+  .awk-keypad {
+    width: 100%; background: #fff; border-top-left-radius: 16px; border-top-right-radius: 16px;
+    padding: 12px; box-shadow: 0 -6px 20px rgba(0,0,0,.15);
+  }
+  .awk-keypad .head {
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+    font-weight:700;
+  }
+  .awk-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .awk-key {
+    padding: 14px 0; text-align:center; border-radius:12px; border:2px solid #e5e7eb;
+    font-size:22px; font-weight:700; background:#f9fafb; user-select:none; cursor:pointer;
+  }
+  .awk-key.action { background:#eaf2ff; border-color:#cfe0ff; }
+  .awk-key.ok { background:#22c55e; border-color:#16a34a; color:#fff; }
+</style>
+
+<div id="awk_kp_overlay" class="awk-keypad-overlay" role="dialog" aria-hidden="true">
+  <div class="awk-keypad">
+    <div class="head">
+      <div>Numeric keypad</div>
+      <button id="awk_kp_close" class="awk-key action" style="padding:8px 14px;font-size:16px;">Close</button>
+    </div>
+    <div class="awk-grid" id="awk_kp_grid">
+      <div class="awk-key">7</div><div class="awk-key">8</div><div class="awk-key">9</div>
+      <div class="awk-key">4</div><div class="awk-key">5</div><div class="awk-key">6</div>
+      <div class="awk-key">1</div><div class="awk-key">2</div><div class="awk-key">3</div>
+      <div class="awk-key">.</div><div class="awk-key">0</div><div class="awk-key action" data-act="bksp">⌫</div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:10px;">
+      <div class="awk-key action" data-act="clr" style="flex:1;">Clear</div>
+      <div class="awk-key ok" data-act="ok" style="flex:2;">Done</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Which inputs should use the keypad? Any whose aria-label includes "Dial" and "(mm)"
+  const matchInput = (el) => {
+    const a = (el.getAttribute('aria-label')||'').toLowerCase();
+    return a.includes('dial') && a.includes('(mm)');
+  };
+
+  const overlay = document.getElementById('awk_kp_overlay');
+  const grid = document.getElementById('awk_kp_grid');
+  const btnClose = document.getElementById('awk_kp_close');
+
+  let activeInput = null;
+
+  function openKP(target){
+    activeInput = target;
+    // prevent OS keyboard by making field readOnly while keypad open
+    activeInput.setAttribute('readonly','readonly');
+    overlay.style.display = 'flex';
+  }
+  function closeKP(){
+    if(activeInput){
+      activeInput.removeAttribute('readonly');
+      activeInput.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+    overlay.style.display = 'none';
+    activeInput = null;
+  }
+
+  function clean(v){
+    v = (v||'').replace(/,/g,'.').replace(/[^0-9.]/g,'');
+    const p = v.indexOf('.');
+    if(p!==-1){ v = v.slice(0,p+1) + v.slice(p+1).replace(/[.]/g,''); }
+    return v;
+  }
+
+  function attach(){
+    const inputs = Array.from(document.querySelectorAll('input[aria-label]')).filter(matchInput);
+    inputs.forEach(el=>{
+      if(el._awk_bound) return;
+      el._awk_bound = true;
+
+      // Clicking focuses our keypad, not OS keyboard
+      el.addEventListener('focus', (e)=>{ e.preventDefault(); openKP(el); el.blur(); });
+      el.addEventListener('click', (e)=>{ e.preventDefault(); openKP(el); });
+
+      // Also sanitize any programmatic changes
+      el.addEventListener('input', ()=>{ el.value = clean(el.value); });
+    });
+  }
+
+  // keypad clicks
+  grid.addEventListener('click', (e)=>{
+    const key = e.target.closest('.awk-key');
+    if(!key || !activeInput) return;
+    const act = key.getAttribute('data-act');
+    if(!act){
+      // digit or dot
+      const ch = key.textContent.trim();
+      let v = activeInput.value || '';
+      if(ch === '.'){
+        if(v.indexOf('.') === -1){ v = v + '.'; }
+      } else {
+        v = v + ch;
+      }
+      activeInput.value = clean(v);
+    } else if(act === 'bksp'){
+      activeInput.value = (activeInput.value||'').slice(0,-1);
+    }
+  });
+
+  document.querySelector('[data-act="clr"]').addEventListener('click', ()=>{
+    if(activeInput){ activeInput.value = ''; }
+  });
+  document.querySelector('[data-act="ok"]').addEventListener('click', closeKP);
+  btnClose.addEventListener('click', closeKP);
+
+  // Attach now and on future rerenders
+  attach();
+  new MutationObserver(attach).observe(document.body, {childList:true, subtree:true});
+})();
+</script>
+""")
 
     # Build rows (require all three values for each load)
+    rows = []
     for L in LOAD_STEPS:
         d1s, d2s, d3s = st.session_state["dials_state"][L]
-        if any((v is None or v.strip() == "") for v in [d1s, d2s, d3s]):
-            st.info("Please fill all three dial readings for each load (you can use '.' or ',').")
+        # The keypad writes into the visible Streamlit inputs; we sanitize here again.
+        def _sanitize(s):
+            s = (s or "").replace(",", ".")
+            s = re.sub(r"[^0-9.]", "", s)
+            if s.count(".") > 1:
+                i = s.find("."); s = s[:i+1] + s[i+1:].replace(".", "")
+            return s
+        d1s, d2s, d3s = _sanitize(d1s), _sanitize(d2s), _sanitize(d3s)
+        if any(v.strip() == "" for v in (d1s, d2s, d3s)):
+            st.info("Please fill all three dial readings for each load (use the on-screen keypad).")
             st.stop()
-        d1f, d2f, d3f = _to_float(d1s), _to_float(d2s), _to_float(d3s)
+        d1f, d2f, d3f = float(d1s), float(d2s), float(d3s)
         p_val = float(PRESSURE_LIBRARY[plate][L])
         rows.append([L, p_val, d1f, d2f, d3f])
 
 # =========================
-# Paste 6x3
+# Paste 6x3 (unchanged)
 # =========================
 elif method == "Paste 6x3 dials":
     pasted = st.text_area("Paste 6x3 table", height=160,
@@ -425,6 +569,7 @@ elif method == "Paste 6x3 dials":
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
     else:
         st.stop()
+
 
 # =========================
 # OCR
