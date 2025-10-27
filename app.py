@@ -181,41 +181,55 @@ PRESSURE_LIBRARY = {
 }
 
 # ---------------- Helpers ----------------
-import streamlit.components.v1 as components
+import re
+import streamlit as st
 
-def ios_number_input(label: str, key: str, value: str = "") -> str:
-    """A plain input field that opens the native iPhone numeric keypad."""
-    html = f"""
-    <div style="font-family:-apple-system,system-ui;margin-bottom:6px;">
-      <label style="font-weight:600;">{label}</label>
-      <input
-        type="text"
-        id="{key}"
-        name="{key}"
-        value="{value}"
-        placeholder="0.00"
-        inputmode="decimal"
-        pattern="[0-9]*"
-        autocomplete="off"
-        autocorrect="off"
-        spellcheck="false"
-        style="
-          font-size:16px;
-          padding:10px 12px;
-          border:2px solid #e6e6e6;
-          border-radius:10px;
-          width:100%;
-          background:#fafafa;
-        ">
-      <script>
-        const el = document.getElementById("{key}");
-        el.addEventListener("input", () => {{
-            if (window.Streamlit) Streamlit.setComponentValue(el.value);
-        }});
-      </script>
-    </div>
+def ios_number_input(
+    label: str,
+    key: str,
+    value: str = "",
+    allow_decimal: bool = True,
+    placeholder: str = ""
+) -> str:
     """
-    return components.html(html, height=70, key=key, include_streamlit_js=True)
+    A Streamlit text_input that forces iPhone's numeric keypad (via inputmode)
+    and restricts input to digits (+ optional one dot). Returns a cleaned string.
+    """
+    # 1) Render a normal Streamlit text_input so state/keys work as usual
+    s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
+
+    # 2) Inject small JS to set inputmode on THIS specific field (matched by aria-label)
+    #    This keeps it all inside Streamlit (no custom component needed).
+    st.html(f"""
+    <script>
+      const wanted = {label!r};
+      // find the input by its aria-label (Streamlit sets this to the label text)
+      const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
+      const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
+      if (el) {{
+        el.setAttribute('inputmode', '{'decimal' if allow_decimal else 'numeric'}');
+        el.setAttribute('pattern', '[0-9]*');
+        el.setAttribute('enterkeyhint', 'done');
+        // optional: live-filter to digits + one dot (if allow_decimal)
+        el.addEventListener('input', () => {{
+          let v = el.value || "";
+          v = v.replace(/[^0-9.]/g, "");
+          if (!{str(allow_decimal).lower()}) v = v.replace(/[.]/g, "");
+          const first = v.indexOf(".");
+          if (first !== -1) v = v.slice(0, first+1) + v.slice(first+1).replace(/[.]/g, "");
+          el.value = v;  // keep it clean while typing
+        }});
+      }}
+    </script>
+    """, height=0)
+
+    # 3) Clean on the Python side too (safety net)
+    s = re.sub(r"[^0-9.]", "", s or "")
+    if not allow_decimal:
+        s = s.replace(".", "")
+    if s.count(".") > 1:
+        i = s.find("."); s = s[:i+1] + s[i+1:].replace(".", "")
+    return s
 
 
 
@@ -471,14 +485,11 @@ if method == "Manual entry":
         c0.write(f"{L:.0f}")
 
         # --- use text_input but mark as numeric type for iPhone ---
-        v1 = c1.text_input("Dial 1 (mm)", value=st.session_state["dials_state"][L][0],
-                           key=f"d1_{L}", placeholder="")
-        v2 = c2.text_input("Dial 2 (mm)", value=st.session_state["dials_state"][L][1],
-                           key=f"d2_{L}", placeholder="")
-        v3 = c3.text_input("Dial 3 (mm)", value=st.session_state["dials_state"][L][2],
-                           key=f"d3_{L}", placeholder="")
-
-        st.session_state["dials_state"][L] = [v1, v2, v3]
+              # AFTER – shows native number keypad on iPhone
+        d1 = ios_number_input("Dial 1 (mm)", key=f"d1_{L}", allow_decimal=True)
+        d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True)
+        d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True)
+        ]
 
     # ---------- Inject JS once to make iPhone show numeric keypad ----------
     st.components.v1.html("""
@@ -494,14 +505,12 @@ if method == "Manual entry":
     """, height=0)
 
     # ---------- Convert text to floats ----------
-    def _to_float(s):
-        s = (s or "").strip()
-        if s in ("", "-", ".", "-.", "None", "nan"):
-            return None
-        try:
-            return float(s.replace(",", "."))
-        except:
-            return None
+   def as_float(x: str) -> float:
+    try: return float(x) if x not in ("", ".") else 0.0
+    except: return 0.0
+
+d1f, d2f, d3f = as_float(d1), as_float(d2), as_float(d3)
+
 
     rows = []
     for L in LOAD_STEPS:
