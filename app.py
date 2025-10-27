@@ -436,13 +436,13 @@ method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OC
 rows = []
 
 
-## ---------------- Manual entry (stable grid; no disappearing values) ----------------
-# ---------------- Manual entry (stable grid; iPhone native keypad via inputmode) ----------------
+# ---------------- Manual entry (stable grid; iPhone native keypad) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
+    # Keep per-cell state (floats or None)
     if "dials_state" not in st.session_state:
-        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
+        st.session_state["dials_state"] = {L: [None, None, None] for L in LOAD_STEPS}
 
     head = st.columns([1, 1.3, 1.3, 1.3])
     head[0].markdown("**Load (kN)**")
@@ -450,35 +450,40 @@ if method == "Manual entry":
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
 
+    def num_cell(col, label, key, initial):
+        # show iPhone numeric keypad; keep two decimals by default
+        val = col.number_input(
+            label,
+            key=key,
+            value=0.00 if initial is None else float(initial),
+            step=0.01,
+            format="%.2f"
+        )
+        # Treat untouched default 0.00 as "not filled" if initial was None.
+        # If 0.00 should count as a valid entry, just `return val`.
+        return val if (initial is not None or val != 0.00) else None
+
+    rows = []
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
 
-        v1 = ios_decimal_input("Dial 1 (mm)", f"ios_{L}_1", st.session_state["dials_state"][L][0])
-        v2 = ios_decimal_input("Dial 2 (mm)", f"ios_{L}_2", st.session_state["dials_state"][L][1])
-        v3 = ios_decimal_input("Dial 3 (mm)", f"ios_{L}_3", st.session_state["dials_state"][L][2])
+        v1 = num_cell(c1, "Dial 1 (mm)", f"dial_{L}_1", st.session_state["dials_state"][L][0])
+        v2 = num_cell(c2, "Dial 2 (mm)", f"dial_{L}_2", st.session_state["dials_state"][L][1])
+        v3 = num_cell(c3, "Dial 3 (mm)", f"dial_{L}_3", st.session_state["dials_state"][L][2])
 
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
-    def _to_float(s):
-        s = str(s).strip()
-        if s in ("", "-", "None", "nan", ".", "-."):
-            return None
-        try:
-            return float(s.replace(",", "."))
-        except Exception:
-            return None
-
-    rows = []
-    for L in LOAD_STEPS:
-        d1s, d2s, d3s = st.session_state["dials_state"][L]
-        d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
         p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, d1, d2, d3])
+        rows.append([L, p_val, v1, v2, v3])
 
+    # Require all cells filled before continuing
     if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
-        st.info("Please fill **all** three dial readings (`,` or `.` both OK on iPhone).")
+        st.info("Please fill **all** three dial readings for each load.")
         st.stop()
+
+    # ... proceed with your settlement/CBR logic using rows ...
+
 
 
 
