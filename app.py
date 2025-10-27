@@ -159,67 +159,48 @@ def _to_float(x) -> float:
 
 def ios_number_input(label: str, key: str, value: str = "", allow_decimal: bool = True, placeholder: str = "") -> str:
     """
-    Streamlit text_input that forces iPhone's numeric keypad.
-    Uses type="tel" + inputmode and re-applies after rerenders.
-    Keep label UNIQUE per widget.
+    Streamlit text_input that forces iPhone numeric keypad by setting inputmode on THIS field (top-level DOM).
+    Returns a cleaned string. Keep label UNIQUE per widget to avoid ambiguity.
     """
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
-    # Build the JS once per field
-    js = f"""
+    input_mode = 'decimal' if allow_decimal else 'numeric'
+    _html(f"""
 <script>
 (function(){{
-  // one global observer to re-apply patches on Streamlit rerenders
-  if(!window._awk_obs){{
-    window._awk_patchers = [];
-    window._awk_obs = new MutationObserver(function(){{
-      window._awk_patchers.forEach(fn => fn());
-    }});
-    window._awk_obs.observe(document.body, {{ childList: true, subtree: true }});
-  }}
-
   const wanted = {label!r};
-  const allowDecimal = {str(allow_decimal).lower()};
-
-  function patchThisField(){{
-    // locate this input by its aria-label (Streamlit sets it from the label)
-    const el = Array.from(document.querySelectorAll('input[aria-label]'))
-      .find(i => (i.getAttribute('aria-label') || '') === wanted);
-    if(!el) return;
-
-    // Force iOS keypad: type=tel + inputmode (iOS respects at least one of these)
-    try {{ el.type = 'tel'; }} catch(e) {{}}
-    el.setAttribute('inputmode', allowDecimal ? 'decimal' : 'numeric');
-    el.setAttribute('autocapitalize','off');
+  function patchOne() {{
+    const inputs = Array.from(document.querySelectorAll('input[aria-label]'));
+    const el = inputs.find(i => i.getAttribute('aria-label') === wanted);
+    if (!el) return false;
+    try {{ el.type = 'text'; }} catch(e) {{}}
+    el.setAttribute('inputmode', '{input_mode}');
     el.setAttribute('autocomplete','off');
     el.setAttribute('autocorrect','off');
     el.setAttribute('spellcheck','false');
     el.setAttribute('enterkeyhint','done');
-    el.setAttribute('pattern','[0-9]*');
-
-    // Live sanitise value
-    if(!el._awk_patched){{
-      el.addEventListener('input', function(){{
+    el.setAttribute('pattern', '[0-9]*');
+    if (!el._awk_patched) {{
+      el.addEventListener('input', () => {{
         let v = el.value || "";
         v = v.replace(/[^0-9.]/g, "");
-        if(!allowDecimal) v = v.replace(/[.]/g, "");
+        {"v = v.replace(/[.]/g, '');" if not allow_decimal else ""}
         const p = v.indexOf(".");
-        if(p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
+        if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g, "");
         el.value = v;
       }});
       el._awk_patched = true;
     }}
+    return true;
   }}
-
-  // register this field's patcher and run it now and shortly after
-  window._awk_patchers.push(patchThisField);
-  patchThisField();
-  setTimeout(patchThisField, 0);
-  setTimeout(patchThisField, 120);
+  if (!patchOne()) {{
+    setTimeout(patchOne, 0);
+    setTimeout(patchOne, 50);
+    setTimeout(patchOne, 150);
+  }}
 }})();
 </script>
-"""
-    _html(js)  # uses st.html if available; otherwise components.html fallback
+""")
 
     # Python-side safety net
     s = (s or "").replace(",", ".")
@@ -391,154 +372,46 @@ method = st.radio("Input method", ["Manual entry", "Paste 6x3 dials", "Photo OCR
 rows = []
 
 # =========================
-# Manual entry (raw HTML with iPhone keypad) -> pipes into "Paste 6x3 dials"
+# Manual Entry (iPhone keypad on every dial)
 # =========================
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # 1) Render the target textarea+button (hidden) that our HTML will fill & submit
-    #    We reuse your existing "Paste 6x3 dials" parser by targeting these widgets.
-    with st.container():
-        pasted = st.text_area("Paste 6x3 table", key="hidden_paste_box", height=160, placeholder="", label_visibility="collapsed")
-        col_hidden = st.columns([1, 3])[0]
-        with col_hidden:
-            submit_hidden = st.button("Submit", key="hidden_submit_button", use_container_width=False)
+    if "dials_state" not in st.session_state:
+        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
-    # 2) Draw raw HTML numeric inputs (6 rows x 3 columns), iPhone keypad guaranteed
-    #    On "Use these values", JS packs values as 6 lines x 3 numbers and
-    #    writes them into the hidden textarea, then clicks the hidden submit.
-    #    Labels are ASCII-only; no fancy characters.
-    inputs_html = """
-<style>
-  .awk-wrap{max-width:860px;margin:0 auto}
-  table.awk {width:100%; border-collapse:collapse; margin-top:8px}
-  table.awk th, table.awk td {border-bottom:1px solid #eee; padding:8px 6px; text-align:center}
-  table.awk th{background:#f7f9fc; font-weight:700}
-  input.dial {
-    width:100%; font-size:18px; padding:10px 12px; border-radius:10px;
-    border:2px solid #d5d9e0; outline:none; text-align:right; background:#fff;
-  }
-  input.dial:focus{border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15)}
-  .actions{display:flex; gap:10px; margin-top:12px; justify-content:flex-end}
-  .btn {
-    padding:10px 14px; border-radius:10px; border:0; background:#2563eb; color:#fff; font-weight:700; cursor:pointer;
-  }
-  .btn.secondary { background:#6b7280; }
-</style>
+    h0, h1, h2, h3 = st.columns([1, 1.3, 1.3, 1.3])
+    h0.markdown("**Load (kN)**")
+    h1.markdown("**Dial 1 (mm)**")
+    h2.markdown("**Dial 2 (mm)**")
+    h3.markdown("**Dial 3 (mm)**")
 
-<div class="awk-wrap">
-  <table class="awk">
-    <thead>
-      <tr>
-        <th>Load (kN)</th>
-        <th>Dial 1 (mm)</th>
-        <th>Dial 2 (mm)</th>
-        <th>Dial 3 (mm)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- rows for 0,10,20,30,40,50 kN -->
-      <tr><td>0</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_0_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_0_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_0_3" placeholder=""></td>
-      </tr>
-      <tr><td>10</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_10_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_10_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_10_3" placeholder=""></td>
-      </tr>
-      <tr><td>20</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_20_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_20_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_20_3" placeholder=""></td>
-      </tr>
-      <tr><td>30</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_30_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_30_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_30_3" placeholder=""></td>
-      </tr>
-      <tr><td>40</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_40_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_40_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_40_3" placeholder=""></td>
-      </tr>
-      <tr><td>50</td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_50_1" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_50_2" placeholder=""></td>
-        <td><input class="dial" inputmode="decimal" pattern="[0-9]*" id="d_50_3" placeholder=""></td>
-      </tr>
-    </tbody>
-  </table>
+    for L in LOAD_STEPS:
+        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
+        c0.write(f"{L:.0f}")
+        with c1:
+            d1 = ios_number_input(f"Dial 1 (mm) - {L} kN", key=f"d1_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][0])
+        with c2:
+            d2 = ios_number_input(f"Dial 2 (mm) - {L} kN", key=f"d2_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][1])
+        with c3:
+            d3 = ios_number_input(f"Dial 3 (mm) - {L} kN", key=f"d3_{L}",
+                                  allow_decimal=True, value=st.session_state["dials_state"][L][2])
+        st.session_state["dials_state"][L] = [d1, d2, d3]
 
-  <div class="actions">
-    <button class="btn secondary" type="button" id="clear_all">Clear</button>
-    <button class="btn" type="button" id="use_values">Use these values</button>
-  </div>
-</div>
-
-<script>
-(function(){
-  function clean(v, allowDecimal=true){
-    v = (v||"").replace(/,/g,".");
-    v = v.replace(/[^0-9.]/g,"");
-    if(!allowDecimal) v = v.replace(/[.]/g,"");
-    const p = v.indexOf(".");
-    if (p !== -1) v = v.slice(0, p+1) + v.slice(p+1).replace(/[.]/g,"");
-    return v;
-  }
-
-  // live sanitize
-  document.querySelectorAll("input.dial").forEach(el=>{
-    el.addEventListener("input", ()=>{ el.value = clean(el.value, true); });
-  });
-
-  document.getElementById("clear_all").addEventListener("click", ()=>{
-    document.querySelectorAll("input.dial").forEach(el=>{ el.value=""; });
-  });
-
-  document.getElementById("use_values").addEventListener("click", ()=>{
-    const loads = [0,10,20,30,40,50];
-    const lines = [];
-    for(const L of loads){
-      const a = clean(document.getElementById(`d_${L}_1`).value, true);
-      const b = clean(document.getElementById(`d_${L}_2`).value, true);
-      const c = clean(document.getElementById(`d_${L}_3`).value, true);
-      if(a==="" || b==="" || c===""){ alert("Please fill all three dials for each load."); return; }
-      lines.push(`${a} ${b} ${c}`);
-    }
-    const blob = lines.join("\\n");
-
-    // Find Streamlit's hidden textarea and submit button by their labels/keys
-    // The "hidden_paste_box" has aria-label equal to "Paste 6x3 table"
-    const ta = Array.from(document.querySelectorAll('textarea[aria-label]'))
-      .find(t => (t.getAttribute('aria-label')||'') === 'Paste 6x3 table');
-    if(!ta){ alert("Could not locate the Paste 6x3 box in the page."); return; }
-    ta.value = blob;
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-
-    // Click the hidden Submit button
-    const btn = Array.from(document.querySelectorAll('button'))
-      .find(b => (b.innerText||'').trim() === 'Submit');
-    if(btn){ btn.click(); }
-  });
-})();
-</script>
-"""
-
-    st.html(inputs_html)  # top-level injection so JS sees Streamlit widgets
-
-    # If user clicked the hidden submit, build rows from the filled textarea
-    if submit_hidden:
-        dmap = parse_dials_from_text(st.session_state.get("hidden_paste_box", ""))
-        if not dmap:
-            st.error("Could not parse values from the manual keypad.")
+    # Build rows (require all three values for each load)
+    for L in LOAD_STEPS:
+        d1s, d2s, d3s = st.session_state["dials_state"][L]
+        if any((v is None or v.strip() == "") for v in [d1s, d2s, d3s]):
+            st.info("Please fill all three dial readings for each load (you can use '.' or ',').")
             st.stop()
-        for L in LOAD_STEPS:
-            rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
+        d1f, d2f, d3f = _to_float(d1s), _to_float(d2s), _to_float(d3s)
+        p_val = float(PRESSURE_LIBRARY[plate][L])
+        rows.append([L, p_val, d1f, d2f, d3f])
 
 # =========================
-# Paste 6x3 (unchanged)
+# Paste 6x3
 # =========================
 elif method == "Paste 6x3 dials":
     pasted = st.text_area("Paste 6x3 table", height=160,
@@ -554,7 +427,7 @@ elif method == "Paste 6x3 dials":
         st.stop()
 
 # =========================
-# OCR (unchanged)
+# OCR
 # =========================
 else:
     upl = st.file_uploader("Upload photo", type=["png", "jpg", "jpeg", "webp"])
@@ -583,7 +456,6 @@ else:
             rows.append([L, PRESSURE_LIBRARY[plate][L]] + dmap[L])
     else:
         st.stop()
-
 
 # =========================
 # Build DataFrame
