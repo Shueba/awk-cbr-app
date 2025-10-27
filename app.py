@@ -433,12 +433,28 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # ---------------- Manual entry (text inputs + iPhone numeric keypad) ----------------
-# ---------------- Manual entry (iPhone keypad) ----------------
+import streamlit as st
+
+# ---- Hide Streamlit number steppers & duplicate labels (works on mobile & desktop) ----
+st.markdown("""
+<style>
+/* hide +/- stepper buttons */
+[data-testid="stNumberInput"] button[aria-label="Increment"],
+[data-testid="stNumberInput"] button[aria-label="Decrement"] { display:none !important; }
+/* remove the small inline label above each number box */
+[data-testid="stNumberInput"] label { display:none !important; }
+/* tighten input height a bit */
+[data-testid="stNumberInput"] input { padding: 10px 12px !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- Manual entry (native iPhone keypad; no +/- UI) ----------------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
+    # keep floats or None
     if "dials_state" not in st.session_state:
-        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
+        st.session_state["dials_state"] = {L: [None, None, None] for L in LOAD_STEPS}
 
     head = st.columns([1, 1.3, 1.3, 1.3])
     head[0].markdown("**Load (kN)**")
@@ -446,35 +462,35 @@ if method == "Manual entry":
     head[2].markdown("**Dial 2 (mm)**")
     head[3].markdown("**Dial 3 (mm)**")
 
+    def num_cell(col, key, initial):
+        # number_input => iPhone shows numeric keypad
+        v = col.number_input(
+            "mm",  # hidden via CSS above
+            key=key,
+            value=0.00 if initial is None else float(initial),
+            step=0.01,
+            format="%.2f"
+        )
+        # treat untouched default 0.00 as empty if initial was None
+        return v if (initial is not None or v != 0.00) else None
+
+    rows = []
     for L in LOAD_STEPS:
         c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
         c0.write(f"{L:.0f}")
 
-        v1 = ios_number_input("Dial 1 (mm)", f"ios_{L}_1", st.session_state["dials_state"][L][0])
-        v2 = ios_number_input("Dial 2 (mm)", f"ios_{L}_2", st.session_state["dials_state"][L][1])
-        v3 = ios_number_input("Dial 3 (mm)", f"ios_{L}_3", st.session_state["dials_state"][L][2])
+        v1 = num_cell(c1, f"dial_{L}_1", st.session_state["dials_state"][L][0])
+        v2 = num_cell(c2, f"dial_{L}_2", st.session_state["dials_state"][L][1])
+        v3 = num_cell(c3, f"dial_{L}_3", st.session_state["dials_state"][L][2])
 
         st.session_state["dials_state"][L] = [v1, v2, v3]
 
-    # Convert to floats
-    def _to_float(s):
-        s = (s or "").strip()
-        if s in ("", "-", ".", "-.", "None", "nan"):
-            return None
-        try:
-            return float(s.replace(",", "."))
-        except:
-            return None
-
-    rows = []
-    for L in LOAD_STEPS:
-        d1s, d2s, d3s = st.session_state["dials_state"][L]
-        d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
         p_val = float(PRESSURE_LIBRARY[plate][L])
-        rows.append([L, p_val, d1, d2, d3])
+        rows.append([L, p_val, v1, v2, v3])
 
+    # require all filled
     if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
-        st.info("Please fill **all three dial readings** for each load.")
+        st.info("Please fill **all** three dial readings for each load.")
         st.stop()
 
 
