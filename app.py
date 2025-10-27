@@ -71,20 +71,35 @@ st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] > .main { padding-top: .6rem; }
 .block-container {
-  max-width: 1000px;
-  padding-left: 1.0rem; padding-right: 1.0rem;
-  margin-left: auto; margin-right: auto;
+    max-width: 1000px;
+    padding-left: 1.0rem; padding-right: 1.0rem;
+    margin-left: auto; margin-right: auto;
 }
 .stButton > button { border-radius: 10px; padding: .65rem 1rem; }
 @media (max-width: 640px) { .stButton > button { width: 100%; } }
 h2 { text-align:center; letter-spacing:.3px; }
 @media (max-width: 640px) {
-  .block-container { padding-left:.6rem; padding-right:.6rem; }
-  .stDataFrame { font-size: .9rem; }
+    .block-container { padding-left:.6rem; padding-right:.6rem; }
+    .stDataFrame { font-size: .9rem; }
 }
 .awk-banner { margin: 10px 0 14px 0; }
+
+/* CSS TO HIDE INCREMENT/DECREMENT ARROWS */
+/* hide increment/decrement arrows and Streamlit's stepper UI */
+[data-testid="stNumberInput"] button[aria-label="Increment"],
+[data-testid="stNumberInput"] button[aria-label="Decrement"] {display: none !important;}
+[data-testid="stNumberInput"] label {display: none !important;}
+[data-testid="stNumberInput"] input {
+    padding: 10px 12px !important;
+    text-align: left !important;
+}
+/* optional: placeholder styling */
+[data-testid="stNumberInput"] input::placeholder {
+    color: #bbb;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 # ---------------- Logo ----------------
 def render_logo(max_width=350):
@@ -136,10 +151,19 @@ PRESSURE_LIBRARY = {
     610: {0: 0.00, 10:  36.43, 20:  71.08, 30: 106.51, 40: 140.73, 50: 174.95},
 }
 
-# ---------------- Helpers ----------------
-# ---------------- Helpers ----------------
+# ---------------- Helpers (Correctly placed and defined) ----------------
 import re
 import streamlit as st
+import json, streamlit.components.v1 as components
+
+def _to_float(x: str) -> float:
+    """Safely converts a string (allowing '.' or ',') to a float, defaulting to 0.0."""
+    x = x.strip().replace(",", ".")
+    try:
+        return float(x)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 def ios_number_input(
     label: str,
@@ -156,7 +180,6 @@ def ios_number_input(
     s = st.text_input(label, value=value, key=key, placeholder=placeholder, label_visibility="visible")
 
     # 2) Inject small JS to set inputmode on THIS specific field (matched by aria-label)
-    #    This ensures the decimal keypad appears on iOS and Android.
     input_mode = 'decimal' if allow_decimal else 'numeric'
     
     st.html(f"""
@@ -171,14 +194,12 @@ def ios_number_input(
         el.setAttribute('autocomplete','off');
         el.setAttribute('autocorrect','off');
         el.setAttribute('spellcheck','false');
-        // pattern is often ignored by type="text", but may help with validation
-        el.setAttribute('pattern', '[0-9]*'); 
+        el.setAttribute('pattern', '[0-9]*');
       }}
     </script>
     """, height=0)
 
     # 3) Clean on the Python side (safety net and final value)
-    # Allow numbers, one dot, and optionally a leading minus (though the keys won't provide it)
     s = s.replace(",", ".") # Accept common locale separator
     s = re.sub(r"[^0-9.]", "", s or "") # Only allow digits and dot
     
@@ -191,11 +212,11 @@ def ios_number_input(
     return s
 
 
-
 def parse_dials_from_text(text: str):
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     rows = []
     for ln in lines:
+        # Note: Using your robust regex for number extraction
         nums = [float(n.replace(",", ".")) for n in re.findall(r"[-+]?\d*\.?\d+", ln)]
         if len(nums) >= 3:
             rows.append(nums[:3])
@@ -296,25 +317,16 @@ def render_cbr_banner(cbr_pct: float, layer: str):
         unsafe_allow_html=True,
     )
 
-def dial_text(label: str, key: str, placeholder: str = " "):
-    """Dial text input; accepts '.' or ','; returns float or None."""
-    raw = st.text_input(label, value="", key=key, placeholder=placeholder)
-    raw = raw.strip()
-    if raw == "" or raw == "-":
-        return None
-    try:
-        return float(raw.replace(",", "."))
-    except ValueError:
-        return None
-
-import json, streamlit as st, streamlit.components.v1 as components
-
-# ---------------- Formatting Helper ----------------
 def format_df(df, decimals=2):
     """Round numeric columns and format floats to N decimal places."""
     df2 = df.copy()
     for col in df2.select_dtypes(include=["float", "float64", "int"]):
-        df2[col] = df2[col].apply(lambda x: f"{x:.{decimals}f}")
+        # Handle the case where the column might contain non-numeric data after the filter
+        # but apply the format only to actual floats/ints
+        try:
+            df2[col] = df2[col].apply(lambda x: f"{x:.{decimals}f}")
+        except ValueError:
+            pass # Skip if conversion fails
     return df2
 
 
@@ -401,97 +413,53 @@ with colD:
 method = st.radio("Input method", ["Manual entry", "Paste 6×3 dials", "Photo OCR (beta)"], index=0)
 rows = []
 
-
-import streamlit as st
-import streamlit.components.v1 as components
-
-import streamlit as st
-
-# ---------- CSS: remove +/– steppers completely ----------
-st.markdown("""
-<style>
-/* hide increment/decrement arrows and Streamlit's stepper UI */
-[data-testid="stNumberInput"] button[aria-label="Increment"],
-[data-testid="stNumberInput"] button[aria-label="Decrement"] {display: none !important;}
-[data-testid="stNumberInput"] label {display: none !important;}
-[data-testid="stNumberInput"] input {
-    padding: 10px 12px !important;
-    text-align: left !important;
-}
-/* optional: placeholder styling */
-[data-testid="stNumberInput"] input::placeholder {
-    color: #bbb;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------- Manual entry table ----------
-# ... (lines leading up to the function)
-
-# ---------- Manual entry table ----------
+# ---------- Manual entry table (Corrected) ----------
 if method == "Manual entry":
     st.markdown("#### Dial gauge inputs (mm)")
 
-    # ... (code for session state init and column headers)
+    if "dials_state" not in st.session_state:
+        # store as text so it can start blank: [[d1, d2, d3], ...]
+        st.session_state["dials_state"] = {L: ["", "", ""] for L in LOAD_STEPS}
 
-    # row inputs
+    head = st.columns([1, 1.3, 1.3, 1.3])
+    head[0].markdown("**Load (kN)**")
+    head[1].markdown("**Dial 1 (mm)**")
+    head[2].markdown("**Dial 2 (mm)**")
+    head[3].markdown("**Dial 3 (mm)**")
+
+    dials_data = {}
+
     for L in LOAD_STEPS:
-        # ... (code for columns and ios_number_input calls)
+        c0, c1, c2, c3 = st.columns([1, 1.3, 1.3, 1.3])
+        c0.write(f"{L:.0f}")
 
-        # STORE THE VALUES BACK TO SESSION STATE
-        st.session_state["dials_state"][L] = [d1, d2, d3] # Ensure this is indented correctly
-
-    # ----------------------------------------------------
-    # Line 463 (def as_float) should be indented like this:
-    # ----------------------------------------------------
-    def as_float(x: str) -> float:
-        try: return float(x) if x not in ("", ".") else 0.0
-        except: return 0.0
-
-    # build rows for dataframe/calcs
-    rows = []
-    for L in LOAD_STEPS:
-        d1s, d2s, d3s = st.session_state["dials_state"][L]
-        # ... rest of the logic ...
-
-        # --- Use the columns to place the inputs ---
+        # Use ios_number_input inside columns to maintain layout
         with c1:
-            d1 = ios_number_input("Dial 1 (mm)", key=f"d1_{L}", allow_decimal=True)
+            d1 = ios_number_input("Dial 1 (mm)", key=f"d1_{L}", allow_decimal=True, value=st.session_state["dials_state"][L][0])
         with c2:
-            d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True)
+            d2 = ios_number_input("Dial 2 (mm)", key=f"d2_{L}", allow_decimal=True, value=st.session_state["dials_state"][L][1])
         with c3:
-            d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True)
-
-        # STORE THE VALUES BACK TO SESSION STATE
+            d3 = ios_number_input("Dial 3 (mm)", key=f"d3_{L}", allow_decimal=True, value=st.session_state["dials_state"][L][2])
+        
+        # Update session state with the current string values
         st.session_state["dials_state"][L] = [d1, d2, d3]
 
-    # ... rest of the code continues below ...
-    
-
-    # ---------- Convert text to floats ----------
-   def as_float(x: str) -> float:
-    try: return float(x) if x not in ("", ".") else 0.0
-    except: return 0.0
-
-d1f, d2f, d3f = as_float(d1), as_float(d2), as_float(d3)
-
-
-    rows = []
+    # Process the data collected from the inputs
     for L in LOAD_STEPS:
         d1s, d2s, d3s = st.session_state["dials_state"][L]
         d1, d2, d3 = _to_float(d1s), _to_float(d2s), _to_float(d3s)
+        
+        # Check if the user has provided non-empty, non-zero data for all three dials 
+        # for load steps above 0. (The 0 load step must have data, even if it's 0)
+        is_valid = all(v is not None and str(v).strip() != "" for v in [d1s, d2s, d3s])
+
+        if L > 0 and not is_valid:
+            # Check for non-zero/non-empty data only for non-zero load steps
+            st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
+            st.stop()
+        
         p_val = float(PRESSURE_LIBRARY[plate][L])
         rows.append([L, p_val, d1, d2, d3])
-
-    if any(v is None for _, _, a, b, c in rows for v in (a, b, c)):
-        st.info("Please fill **all** three dial readings for each load (`,` or `.` both OK).")
-        st.stop()
-
-
-
-
-
-
 
 
 elif method == "Paste 6×3 dials":
@@ -535,9 +503,6 @@ else:  # Photo OCR (beta)
     else:
         st.stop()
 
-# Ensure keypad patch is active for dynamically created inputs
-force_decimal_keypad()
-
 # ---------------- DataFrame ----------------
 if not rows:
     st.stop()
@@ -556,7 +521,7 @@ bp125, p1a, p1b, m, b = interp_bp_at_1p25(
     df["Settlement (mm)"], df[f"Bearing Pressure ({PRESSURE_UNITS})"]
 )
 if bp125 is None:
-    st.warning("1.25 mm outside range.")
+    st.warning("1.25 mm outside range. Ensure 1.25mm settlement is bracketed by your readings.")
     st.stop()
 
 kint = k762(bp125, cf)
